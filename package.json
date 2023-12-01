@@ -42,7 +42,7 @@
 		"@types/luxon": "3.2.0",
 		"@types/mithril": "2.0.11",
 		"@types/qrcode-svg": "1.1.1",
-		"@types/systemjs": "6.1.1",
+		"@types/systemjs": "6.13.5",
 		"@types/winreg": "1.2.31",
 		"better-sqlite3": "git+https://github.com/tutao/better-sqlite3-sqlcipher#991676c3b0c53ecb08380b2799cf7b8fda6c9f16",
 		"cborg": "1.5.4",
@@ -56,7 +56,7 @@
 		"mithril": "2.2.2",
 		"qrcode-svg": "1.0.0",
 		"squire-rte": "2.2.2",
-		"systemjs": "6.10.2",
+		"systemjs": "6.14.2",
 		"undici": "5.27.2",
 		"winreg": "1.2.4"
 	},
