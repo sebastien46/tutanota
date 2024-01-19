@@ -6,9 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.fasterxml.jackson.databind.ObjectMapper
 import de.tutao.tutanota.AndroidNativeCryptoFacade.Companion.AES256_KEY_LENGTH_BYTES
 import de.tutao.tutanota.AndroidNativeCryptoFacade.Companion.bytesToKey
-import de.tutao.tutanota.ipc.RsaPrivateKey
-import de.tutao.tutanota.ipc.RsaPublicKey
-import de.tutao.tutanota.ipc.wrap
+import de.tutao.tutanota.ipc.*
 import de.tutao.tutanota.testdata.TestData
 import kotlinx.coroutines.runBlocking
 import org.apache.commons.io.output.ByteArrayOutputStream
@@ -19,9 +17,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.mock
 import java.io.ByteArrayInputStream
+import java.io.DataInputStream
 import java.io.IOException
 import java.math.BigInteger
 import java.security.SecureRandom
+import java.util.*
+
 
 const val ARGON2ID_TIME_COST = 4
 const val ARGON2ID_MEMORY_COST = 32 * 1024
@@ -149,6 +150,31 @@ class CompatibilityTest {
 		}
 	}
 
+	@Test
+	@Throws(CryptoError::class)
+	fun kyber() = runBlocking {
+		for (td in testData.kyberEncryptionTests) {
+			// we need to use the same seed so that we always obtain the same encapsulation
+			val privateKey: KyberPrivateKey = hexToKyberPrivateKey(td.privateKey)
+			val publicKey: KyberPublicKey = hexToKyberPublicKey(td.publicKey)
+			val encapsulation = crypto.kyberEncapsulate(publicKey, hexToBytes(td.seed).wrap())
+			assertEquals(td.cipherText, bytesToHex(encapsulation.ciphertext.data))
+			assertEquals(td.sharedSecret, bytesToHex(encapsulation.sharedSecret.data))
+			val sharedSecret = crypto.kyberDecapsulate(privateKey, hexToBytes(td.cipherText).wrap())
+			assertEquals(td.sharedSecret, bytesToHex(sharedSecret.data))
+		}
+	}
+
+	private fun hexToKyberPrivateKey(privateKey: String): KyberPrivateKey {
+		val keyComponents = bytesToByteArrays(hexToBytes(privateKey), 5)
+		return KyberPrivateKey(DataWrapper(keyComponents[0] + keyComponents[3] + keyComponents[4] + keyComponents[1] + keyComponents[2]))
+	}
+
+	private fun hexToKyberPublicKey(publicKey: String): KyberPublicKey {
+		val keyComponents = bytesToByteArrays(hexToBytes(publicKey), 2)
+		return KyberPublicKey(DataWrapper(keyComponents[0] + keyComponents[1]))
+	}
+
 	companion object {
 		private const val TEST_DATA = "CompatibilityTestData.json"
 		private val om = ObjectMapper()
@@ -166,11 +192,11 @@ class CompatibilityTest {
 		}
 
 		private fun hexToPrivateKey(hex: String): RsaPrivateKey {
-			return arrayToPrivateKey(hexToKeyArray(hex))
+			return arrayToRsaPrivateKey(hexToKeyArray(hex))
 		}
 
 		private fun hexToPublicKey(hex: String): RsaPublicKey {
-			return arrayToPublicKey(hexToKeyArray(hex))
+			return arrayToRsaPublicKey(hexToKeyArray(hex))
 		}
 
 		private fun hexToKeyArray(hex: String): Array<BigInteger> {
@@ -185,7 +211,7 @@ class CompatibilityTest {
 			return key.toArray(arrayOf())
 		}
 
-		private fun arrayToPrivateKey(keyArray: Array<BigInteger>): RsaPrivateKey {
+		private fun arrayToRsaPrivateKey(keyArray: Array<BigInteger>): RsaPrivateKey {
 			val keyParts = keyArray.map { it.toByteArray().toBase64() }
 			return RsaPrivateKey(
 					version = 0,
@@ -200,7 +226,7 @@ class CompatibilityTest {
 			)
 		}
 
-		private fun arrayToPublicKey(keyArray: Array<BigInteger>): RsaPublicKey {
+		private fun arrayToRsaPublicKey(keyArray: Array<BigInteger>): RsaPublicKey {
 			return RsaPublicKey(
 					version = 0,
 					modulus = keyArray[0].toByteArray().toBase64(),
@@ -227,6 +253,37 @@ class CompatibilityTest {
 				hexChars[j * 2 + 1] = hexArray[v and 0x0F]
 			}
 			return String(hexChars)
+		}
+
+		/**
+		 * Decodes a byte array encoded by #byteArraysToBytes.
+		 *
+		 * @return list of byte arrays
+		 */
+		private fun bytesToByteArrays(encodedByteArrays: ByteArray, expectedByteArrays: Int): ArrayList<ByteArray> {
+			val `in` = DataInputStream(ByteArrayInputStream(encodedByteArrays))
+			return try {
+				val byteArrays = ArrayList<ByteArray>()
+				var pos = 0
+				while (pos < encodedByteArrays.size) {
+					val byteArrayLength: Int = `in`.readUnsignedShort()
+					pos += 2
+					val byteArray = ByteArray(byteArrayLength)
+					val readBytes = `in`.read(byteArray)
+					if (readBytes != byteArrayLength) {
+						throw RuntimeException(
+								"cannot read encoded byte array at pos:" + pos + " expected bytes:" + byteArrayLength + " read bytes:" + readBytes + " read byte arrays:" + byteArrays.size)
+					}
+					byteArrays.add(byteArray.copyOf(byteArrayLength))
+					pos += byteArrayLength
+				}
+				if (byteArrays.size != expectedByteArrays) {
+					throw RuntimeException("invalid amount of key parameters. Expected: " + expectedByteArrays + " actual:" + byteArrays.size)
+				}
+				byteArrays
+			} catch (e: IOException) {
+				throw RuntimeException(e)
+			}
 		}
 
 		private fun stubRandom(seed: String): SecureRandom {

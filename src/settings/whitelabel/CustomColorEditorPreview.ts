@@ -1,13 +1,13 @@
 import m, { Children, Component } from "mithril"
 import { px, size } from "../../gui/size"
 import { Button, ButtonType } from "../../gui/base/Button.js"
-import { createMail } from "../../api/entities/tutanota/TypeRefs.js"
-import { createMailAddress } from "../../api/entities/tutanota/TypeRefs.js"
+import { createMail, createMailAddress, Mail } from "../../api/entities/tutanota/TypeRefs.js"
 import { MailRow } from "../../mail/view/MailRow"
 import { noOp } from "@tutao/tutanota-utils"
 import { IconButton } from "../../gui/base/IconButton.js"
 import { Icons } from "../../gui/base/icons/Icons.js"
 import { ToggleButton } from "../../gui/base/buttons/ToggleButton.js"
+import { isApp, isDesktop } from "../../api/common/Env.js"
 
 export const BUTTON_WIDTH = 270
 
@@ -38,7 +38,7 @@ export class CustomColorEditorPreview implements Component {
 						},
 					},
 					m(Button, {
-						label: "login_action",
+						label: isApp() || isDesktop() ? "addAccount_action" : "login_action",
 						click: noOp,
 						type: ButtonType.Login,
 					}),
@@ -74,31 +74,54 @@ export class CustomColorEditorPreview implements Component {
 	}
 
 	renderPreviewMailRow(): Children {
+		const mailTemplate = {
+			receivedDate: new Date(),
+			attachments: [],
+			state: "2",
+			mailDetails: null,
+			body: null,
+			authStatus: null,
+			encryptionAuthStatus: null,
+			method: "0",
+			bccRecipients: [],
+			bucketKey: null,
+			ccRecipients: [],
+			headers: null,
+			conversationEntry: ["listId", "conversationId"],
+			differentEnvelopeSender: null,
+			firstRecipient: null,
+			listUnsubscribe: false,
+			mailDetailsDraft: null,
+			movedTime: null,
+			phishingStatus: "0",
+			recipientCount: "0",
+			replyTos: [],
+			sentDate: null,
+			toRecipients: [],
+		} satisfies Partial<Mail>
 		const mail = createMail({
 			sender: createMailAddress({
 				address: "m.mustermann@example.com",
 				name: "Max Mustermann",
+				contact: null,
 			}),
-			receivedDate: new Date(),
 			subject: "Mail 1",
 			unread: false,
 			replyType: "0",
 			confidential: true,
-			attachments: [],
-			state: "2",
+			...mailTemplate,
 		})
 		const mail2 = createMail({
 			sender: createMailAddress({
 				address: "m.mustermann@example.com",
 				name: "Max Mustermann",
+				contact: null,
 			}),
-			receivedDate: new Date(),
 			subject: "Mail 2",
 			unread: true,
 			replyType: "1",
 			confidential: false,
-			attachments: [],
-			state: "2",
+			...mailTemplate,
 		})
 		return m(
 			".rel",

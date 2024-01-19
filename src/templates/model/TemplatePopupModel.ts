@@ -2,8 +2,6 @@ import type { LanguageCode } from "../../misc/LanguageViewModel"
 import { lang } from "../../misc/LanguageViewModel"
 import type { EmailTemplateContent } from "../../api/entities/tutanota/TypeRefs.js"
 import { EmailTemplate, EmailTemplateTypeRef, TemplateGroupRootTypeRef } from "../../api/entities/tutanota/TypeRefs.js"
-import type { EntityEventsListener, EntityUpdateData } from "../../api/main/EventController"
-import { EventController, isUpdateForTypeRef } from "../../api/main/EventController"
 import { OperationType } from "../../api/common/TutanotaConstants"
 import stream from "mithril/stream"
 import Stream from "mithril/stream"
@@ -15,6 +13,8 @@ import { GroupInfoTypeRef, GroupTypeRef } from "../../api/entities/sys/TypeRefs.
 import { LazyLoaded, promiseMap, SortedArray } from "@tutao/tutanota-utils"
 import type { TemplateGroupInstance } from "./TemplateGroupModel"
 import { search } from "../../api/common/utils/PlainTextSearch.js"
+import { EntityEventsListener, EventController } from "../../api/main/EventController.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 /**
  *   Model that holds main logic for the Template Feature.

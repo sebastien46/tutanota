@@ -5,7 +5,7 @@ import { renderHtml } from "../buildSrc/LaunchHtml.js"
 import { build as esbuild } from "esbuild"
 import { getTutanotaAppVersion, runStep, writeFile } from "../buildSrc/buildUtils.js"
 import { aliasPath as esbuildPluginAliasPath } from "esbuild-plugin-alias-path"
-import { keytarNativePlugin, libDeps, preludeEnvPlugin, sqliteNativePlugin } from "../buildSrc/esbuildUtils.js"
+import { libDeps, preludeEnvPlugin, sqliteNativePlugin } from "../buildSrc/esbuildUtils.js"
 import { buildPackages } from "../buildSrc/packageBuilderFunctions.js"
 import watPlugin from "esbuild-plugin-wat"
 import { domainConfigs } from "../buildSrc/DomainConfigs.js"
@@ -36,6 +36,7 @@ export async function runTestBuild({ clean, fast = false }) {
 		await fs.mkdir(inBuildDir(), { recursive: true })
 		await fs.copyFile(pjPath, inBuildDir("package.json"))
 		await fs.copyFile(path.join("..", "packages/tutanota-crypto/lib/hashes/Argon2id/argon2.wasm"), inBuildDir("argon2.wasm"))
+		await fs.copyFile(path.join("..", "packages/tutanota-crypto/lib/encryption/Liboqs/liboqs.wasm"), inBuildDir("liboqs.wasm"))
 		await createUnitTestHtml(localEnv)
 	})
 	await runStep("Esbuild", async () => {
@@ -80,9 +81,28 @@ export async function runTestBuild({ clean, fast = false }) {
 				"server-destroy",
 				"body-parser",
 				"jsdom",
+				"node:*",
+				"http",
+				"stream",
+				"fs",
+				"assert",
+				"net",
+				"diagnostics_channel",
+				"zlib",
+				"console",
+				"async_hooks",
+				"util/types",
+				"perf_hooks",
+				"worker_threads",
+				"path",
+				"tls",
+				"buffer",
+				"events",
+				"string_decoder",
 			],
 			// even though tests might be running in browser we set it to node so that it ignores all builtins
-			platform: "node",
+			platform: "neutral",
+			mainFields: ["module", "main"],
 			plugins: [
 				preludeEnvPlugin(localEnv),
 				libDeps(".."),
@@ -99,12 +119,6 @@ export async function runTestBuild({ clean, fast = false }) {
 					platform: process.platform,
 					architecture: process.arch,
 					nativeBindingPath: path.resolve("../node_modules/better-sqlite3/build/Release/better_sqlite3.node"),
-				}),
-				keytarNativePlugin({
-					environment: "node",
-					dstPath: "./build/keytar.node",
-					platform: process.platform,
-					architecture: process.arch,
 				}),
 				watPlugin({
 					loader: "file",

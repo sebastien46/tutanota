@@ -8,8 +8,6 @@ import * as AddGroupDialog from "./AddGroupDialog.js"
 import { Icon } from "../../gui/base/Icon.js"
 import { Icons } from "../../gui/base/icons/Icons.js"
 import { BootIcons } from "../../gui/base/icons/BootIcons.js"
-import type { EntityUpdateData } from "../../api/main/EventController.js"
-import { isUpdateForTypeRef } from "../../api/main/EventController.js"
 import { locator } from "../../api/main/MainLocator.js"
 import { ListColumnWrapper } from "../../gui/ListColumnWrapper.js"
 import { assertMainOrNode } from "../../api/common/Env.js"
@@ -30,6 +28,7 @@ import ColumnEmptyMessageBox from "../../gui/base/ColumnEmptyMessageBox.js"
 import { theme } from "../../gui/theme.js"
 import { IconButton } from "../../gui/base/IconButton.js"
 import { NewPaidPlans } from "../../api/common/TutanotaConstants.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
 const className = "group-list"
@@ -65,10 +64,6 @@ export class GroupListView implements UpdatableSettingsViewer {
 		this.localAdminGroupMemberships = locator.logins.getUserController().getLocalAdminGroupMemberships()
 
 		this.listModel.loadInitial()
-
-		this.listId.getAsync().then((listId) => {
-			locator.search.setGroupInfoRestrictionListId(listId)
-		})
 
 		this.oncreate = this.oncreate.bind(this)
 		this.onremove = this.onremove.bind(this)

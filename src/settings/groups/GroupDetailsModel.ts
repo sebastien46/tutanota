@@ -20,11 +20,11 @@ import { stringValidator } from "../../gui/base/Dialog.js"
 import { locator } from "../../api/main/MainLocator.js"
 import { BadRequestError, NotAuthorizedError, PreconditionFailedError } from "../../api/common/error/RestError.js"
 import { compareGroupInfos, getGroupInfoDisplayName } from "../../api/common/utils/GroupUtils.js"
-import { EntityUpdateData, isUpdateForTypeRef } from "../../api/main/EventController.js"
 import { MailboxPropertiesTypeRef } from "../../api/entities/tutanota/TypeRefs.js"
 import { UserError } from "../../api/main/UserError.js"
 import { BookingParams } from "../../subscription/BuyDialog.js"
 import { toFeatureType } from "../../subscription/SubscriptionUtils.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 export class GroupDetailsModel {
 	groupInfo: GroupInfo

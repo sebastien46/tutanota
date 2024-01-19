@@ -15,7 +15,6 @@ export const dependencyMap = {
 	// belaw this, the modules are only running in the desktop main thread.
 	"electron-updater": path.normalize("./libs/electron-updater.mjs"),
 	"better-sqlite3": path.normalize("./libs/better-sqlite3.mjs"),
-	keytar: path.normalize("./libs/keytar.mjs"),
 	winreg: path.normalize("./libs/winreg.mjs"),
 	undici: path.normalize("./libs/undici.mjs"),
 }
@@ -31,13 +30,14 @@ export const allowedImports = {
 	"gui-base": ["polyfill-helpers", "common-min", "common", "boot"],
 	main: ["polyfill-helpers", "common-min", "common", "boot", "gui-base"],
 	sanitizer: ["polyfill-helpers", "common-min", "common", "boot", "gui-base"],
-	date: ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "sharing"],
+	date: ["polyfill-helpers", "common-min", "common", "boot", "sharing"],
+	"date-gui": ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "sharing", "date"],
 	"mail-view": ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main"],
 	"mail-editor": ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "mail-view", "sanitizer", "sharing"],
-	search: ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "mail-view", "contacts", "date"],
+	search: ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "mail-view", "calendar-view", "contacts", "date", "date-gui", "sharing"],
 	// ContactMergeView needs HtmlEditor even though ContactEditor doesn't?
-	contacts: ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "mail-view", "date", "mail-editor"],
-	"calendar-view": ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "date", "sharing"],
+	contacts: ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "mail-view", "date", "date-gui", "mail-editor"],
+	"calendar-view": ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "date", "date-gui", "sharing"],
 	login: ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main"],
 	worker: ["polyfill-helpers", "common-min", "common", "native-common", "native-worker"],
 	settings: [
@@ -52,6 +52,7 @@ export const allowedImports = {
 		"mail-editor",
 		"mail-view",
 		"date",
+		"date-gui",
 		"login",
 		"sharing",
 	],
@@ -61,7 +62,7 @@ export const allowedImports = {
 	"native-main": ["polyfill-helpers", "common-min", "common", "boot", "gui-base", "main", "native-common", "login"],
 	"native-worker": ["polyfill-helpers", "common-min", "common"],
 	jszip: ["polyfill-helpers"],
-	"worker-lazy": ["common-min", "common", "worker", "worker-search"],
+	"worker-lazy": ["common-min", "common", "worker", "worker-search", "date"],
 	"worker-search": ["common-min", "common", "worker", "worker-lazy"],
 	linkify: [],
 }
@@ -97,7 +98,7 @@ export function getChunkName(moduleId, { getModuleInfo }) {
 		return moduleId.includes(path.normalize(subpath))
 	}
 
-	if (code.includes("@bundleInto:common-min") || isIn("libs/stream") || isIn("packages/tutanota-utils")) {
+	if (code.includes("@bundleInto:common-min") || isIn("libs/stream") || isIn("packages/tutanota-utils") || isIn("packages/tutanota-error")) {
 		// if detecting this does not work even though the comment is there, add a blank line after the annotation.
 		return "common-min"
 	} else if (code.includes("@bundleInto:common")) {
@@ -108,8 +109,14 @@ export function getChunkName(moduleId, { getModuleInfo }) {
 		// everything marked as assertMainOrNodeBoot goes into boot bundle right now
 		// (which is getting merged into app.js)
 		return "boot"
-	} else if (isIn("src/gui/date") || isIn("src/misc/DateParser") || moduleId.includes("luxon") || isIn("src/calendar/date") || isIn("src/calendar/export")) {
-		// luxon and everything that depends on it goes into date bundle
+	} else if (isIn("src/calendar/export") || isIn("src/misc/DateParser") || isIn("src/calendar/model") || isIn("src/calendar/gui")) {
+		// this contains code that is important to the calendar view but might be used by other parts of the app on the main thread
+		// like time-based input components and formatting code.
+		return "date-gui"
+	} else if (moduleId.includes("luxon") || isIn("src/calendar/date")) {
+		// common calendar/time code that might be used in main or worker threads
+		// primarily luxon and utility functions based on it, but no display code
+		// (formatting, UI components)
 		return "date"
 	} else if (isIn("src/misc/HtmlSanitizer") || isIn("libs/purify")) {
 		return "sanitizer"
@@ -133,12 +140,12 @@ export function getChunkName(moduleId, { getModuleInfo }) {
 		isIn("src/api/main") ||
 		isIn("src/mail/model") ||
 		isIn("src/contacts/model") ||
-		isIn("src/calendar/model") ||
 		isIn("src/search/model") ||
 		isIn("src/misc/ErrorHandlerImpl") ||
 		isIn("src/misc") ||
 		isIn("src/file") ||
 		isIn("src/gui") ||
+		isIn("src/serviceworker") ||
 		moduleId.includes(path.normalize("packages/tutanota-usagetests"))
 	) {
 		// Things which we always need for main thread anyway, at least currently
@@ -167,7 +174,11 @@ export function getChunkName(moduleId, { getModuleInfo }) {
 		isIn("src/api/entities") ||
 		isIn("src/desktop/config/ConfigKeys") ||
 		moduleId.includes("cborg") ||
-		isIn("src/offline")
+		isIn("src/offline") ||
+		// CryptoError is needed on the main thread in order to check errors
+		// We have to define both the entry point and the files referenced from it which is annoying
+		isIn("packages/tutanota-crypto/dist/error") ||
+		isIn("packages/tutanota-crypto/dist/misc/CryptoError.js")
 	) {
 		// things that are used in both worker and client
 		// entities could be separate in theory but in practice they are anyway
@@ -193,7 +204,7 @@ export function getChunkName(moduleId, { getModuleInfo }) {
 		return "worker-search"
 	} else if (isIn("src/api/worker/Urlifier") || isIn("libs/linkify") || isIn("libs/linkify-html")) {
 		return "linkify"
-	} else if (isIn("src/api/worker") || moduleId.includes(path.normalize("packages/tutanota-crypto")) || moduleId.includes("argon2")) {
+	} else if (isIn("src/api/worker") || isIn("packages/tutanota-crypto") || moduleId.includes("argon2")) {
 		return "worker" // avoid that crypto stuff is only put into native
 	} else if (isIn("libs/jszip")) {
 		return "jszip"

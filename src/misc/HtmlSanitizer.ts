@@ -2,20 +2,26 @@ import DOMPurify, { Config, DOMPurifyI, HookEvent } from "dompurify"
 import { ReplacementImage } from "../gui/base/icons/Icons"
 import { downcast, stringToUtf8Uint8Array, utf8Uint8ArrayToString } from "@tutao/tutanota-utils"
 import { DataFile } from "../api/common/DataFile"
+import { encodeSVG } from "../gui/base/GuiUtils.js"
 
 /** Data url for an SVG image that will be shown in place of external content. */
-export const PREVENT_EXTERNAL_IMAGE_LOADING_ICON: string =
-	"data:image/svg+xml;utf8," +
-	ReplacementImage
-		// the svg data string must contain ' instead of " to avoid display errors in Edge (probably not relevant anymore but better be safe)
-		.replace(/"/g, "'")
-		// '#' character is reserved in URL and FF won't display SVG otherwise
-		.replace(/#/g, "%23")
-		/// fold consecutive whitespace into a single one (useful for tests)
-		.replace(/\s+/g, " ")
+export const PREVENT_EXTERNAL_IMAGE_LOADING_ICON: string = encodeSVG(ReplacementImage)
 
 // background attribute is deprecated but still used in common browsers
-const EXTERNAL_CONTENT_ATTRS = Object.freeze(["src", "poster", "srcset", "background", "draft-src", "draft-srcset"])
+const EXTERNAL_CONTENT_ATTRS = Object.freeze([
+	"src",
+	"poster",
+	"srcset",
+	"background",
+	"draft-src",
+	"draft-srcset",
+	"draft-xlink:href",
+	"draft-href",
+	"xlink:href",
+	"href",
+])
+
+const DRAFT_ATTRIBUTES = ["draft-src", "draft-srcset", "draft-xlink:href", "draft-href"]
 
 type SanitizeConfigExtra = {
 	blockExternalContent: boolean
@@ -34,7 +40,7 @@ export type SanitizedHTML = {
 	/** Clean HTML text */
 	html: string
 	/** Number of blocked external content that was encountered */
-	externalContent: number
+	blockedExternalContent: number
 	/** Collected cid: URLs, normally used for inline content */
 	inlineImageCids: Array<string>
 	/** Collected href link elements */
@@ -50,7 +56,7 @@ export type SanitizedFragment = {
 	/** Clean HTML fragment */
 	fragment: DocumentFragment
 	/** Number of blocked external content that was encountered */
-	externalContent: number
+	blockedExternalContent: number
 	/** Collected cid: URLs, normally used for inline content */
 	inlineImageCids: Array<string>
 	/** Collected href link elements */
@@ -130,7 +136,7 @@ export class HtmlSanitizer {
 		const cleanHtml = this.purifier.sanitize(html, config)
 		return {
 			html: cleanHtml,
-			externalContent: this.externalContent,
+			blockedExternalContent: this.externalContent,
 			inlineImageCids: this.inlineImageCids,
 			links: this.links,
 		}
@@ -144,7 +150,7 @@ export class HtmlSanitizer {
 		const cleanSvg = this.purifier.sanitize(svg, config)
 		return {
 			html: cleanSvg,
-			externalContent: this.externalContent,
+			blockedExternalContent: this.externalContent,
 			inlineImageCids: this.inlineImageCids,
 			links: this.links,
 		}
@@ -202,7 +208,7 @@ export class HtmlSanitizer {
 		const cleanFragment = this.purifier.sanitize(html, config)
 		return {
 			fragment: cleanFragment,
-			externalContent: this.externalContent,
+			blockedExternalContent: this.externalContent,
 			inlineImageCids: this.inlineImageCids,
 			links: this.links,
 		}
@@ -301,6 +307,8 @@ export class HtmlSanitizer {
 	}
 
 	private replaceAttributeValue(htmlNode: HTMLElement, config: SanitizeConfig) {
+		const nodeName = htmlNode.tagName.toLowerCase()
+
 		for (const attrName of EXTERNAL_CONTENT_ATTRS) {
 			let attribute = htmlNode.attributes.getNamedItem(attrName)
 
@@ -325,17 +333,27 @@ export class HtmlSanitizer {
 					config.blockExternalContent &&
 					!attribute.value.startsWith("data:") &&
 					!attribute.value.startsWith("cid:") &&
-					!attribute.name.startsWith("draft-")
+					!attribute.name.startsWith("draft-") &&
+					!(nodeName === "a") &&
+					!(nodeName === "area") &&
+					!(nodeName === "base") &&
+					!(nodeName === "link")
 				) {
+					// Since we are blocking href now we need to check if the attr isn't
+					// being used by a valid tag (a, area, base, link)
 					this.externalContent++
 
 					htmlNode.setAttribute("draft-" + attribute.name, attribute.value)
 					attribute.value = PREVENT_EXTERNAL_IMAGE_LOADING_ICON
 					htmlNode.attributes.setNamedItem(attribute)
 					htmlNode.style.maxWidth = "100px"
-				} else if (!config.blockExternalContent && (attribute.name === "draft-src" || attribute.name === "draft-srcset")) {
+				} else if (!config.blockExternalContent && DRAFT_ATTRIBUTES.includes(attribute.name)) {
 					if (attribute.name === "draft-src") {
 						htmlNode.setAttribute("src", attribute.value)
+						htmlNode.removeAttribute(attribute.name)
+					} else if (attribute.name === "draft-href" || attribute.name === "draft-xlink:href") {
+						const hrefTag = attribute.name === "draft-href" ? "href" : "xlink:href"
+						htmlNode.setAttribute(hrefTag, attribute.value)
 						htmlNode.removeAttribute(attribute.name)
 					} else {
 						htmlNode.setAttribute("srcset", attribute.value)

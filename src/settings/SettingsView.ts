@@ -22,8 +22,7 @@ import { BootIcons } from "../gui/base/icons/BootIcons"
 import { locator } from "../api/main/MainLocator"
 import { SubscriptionViewer } from "../subscription/SubscriptionViewer"
 import { PaymentViewer } from "../subscription/PaymentViewer"
-import type { EntityUpdateData } from "../api/main/EventController"
-import { isUpdateForTypeRef } from "../api/main/EventController"
+
 import { showUserImportDialog, UserViewer } from "./UserViewer"
 import { LazyLoaded, partition, promiseMap } from "@tutao/tutanota-utils"
 import { AppearanceSettingsViewer } from "./AppearanceSettingsViewer"
@@ -46,7 +45,6 @@ import { ReceivedGroupInvitationsModel } from "../sharing/model/ReceivedGroupInv
 import { getDefaultGroupName, getSharedGroupName, isSharedGroupOwner } from "../sharing/GroupUtils"
 import { DummyTemplateListView } from "./DummyTemplateListView"
 import { SettingsFolderRow } from "./SettingsFolderRow"
-import { isCustomizationEnabledForCustomer } from "../api/common/utils/Utils"
 import { showProgressDialog } from "../gui/dialogs/ProgressDialog"
 import { TextField } from "../gui/base/TextField.js"
 import { createGroupSettings, createUserAreaGroupDeleteData } from "../api/entities/tutanota/TypeRefs.js"
@@ -66,6 +64,8 @@ import { styles } from "../gui/styles.js"
 import { MobileHeader } from "../gui/MobileHeader.js"
 import { GroupDetailsView } from "./groups/GroupDetailsView.js"
 import { TemplateDetailsViewer } from "./TemplateDetailsViewer.js"
+import { isCustomizationEnabledForCustomer } from "../api/common/utils/CustomerUtils.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
 
@@ -257,9 +257,11 @@ export class SettingsView extends BaseTopLevelView implements TopLevelView<Setti
 				},
 			},
 			ColumnType.Foreground,
-			size.first_col_min_width,
-			size.first_col_max_width,
-			() => lang.get("settings_label"),
+			{
+				minWidth: size.first_col_min_width,
+				maxWidth: size.first_col_max_width,
+				headerCenter: () => lang.get("settings_label"),
+			},
 		)
 		this._settingsColumn = new ViewColumn(
 			{
@@ -288,9 +290,11 @@ export class SettingsView extends BaseTopLevelView implements TopLevelView<Setti
 					}),
 			},
 			ColumnType.Background,
-			400,
-			600,
-			() => lang.getMaybeLazy(this._selectedFolder.name),
+			{
+				minWidth: 400,
+				maxWidth: 600,
+				headerCenter: () => lang.getMaybeLazy(this._selectedFolder.name),
+			},
 		)
 		this._settingsDetailsColumn = new ViewColumn(
 			{
@@ -311,9 +315,11 @@ export class SettingsView extends BaseTopLevelView implements TopLevelView<Setti
 					}),
 			},
 			ColumnType.Background,
-			500,
-			2400,
-			() => lang.get("settings_label"),
+			{
+				minWidth: 500,
+				maxWidth: 2400,
+				headerCenter: () => lang.get("settings_label"),
+			},
 		)
 		this.viewSlider = new ViewSlider([this._settingsFoldersColumn, this._settingsColumn, this._settingsDetailsColumn])
 

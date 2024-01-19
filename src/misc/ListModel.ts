@@ -1,6 +1,6 @@
 import { getElementId, isSameId, ListElement } from "../api/common/utils/EntityUtils.js"
 import { ListLoadingState, ListState } from "../gui/base/List.js"
-import { isOfflineError } from "../api/common/utils/ErrorCheckUtils.js"
+
 import { OperationType } from "../api/common/TutanotaConstants.js"
 import {
 	assertNonNull,
@@ -22,6 +22,7 @@ import {
 import Stream from "mithril/stream"
 import stream from "mithril/stream"
 import { ListFetchResult, PageSize } from "../gui/base/ListUtils.js"
+import { isOfflineError } from "../api/common/utils/ErrorUtils.js"
 
 export interface ListModelConfig<ElementType> {
 	topId: Id
@@ -138,8 +139,14 @@ export class ListModel<ElementType extends ListElement> {
 		await this.doLoad()
 	}
 
+	updateLoadingStatus(status: ListLoadingState) {
+		if (this.rawState.loadingStatus === status) return
+
+		this.updateState({ loadingStatus: status })
+	}
+
 	private async doLoad() {
-		this.updateState({ loadingStatus: ListLoadingState.Loading })
+		this.updateLoadingStatus(ListLoadingState.Loading)
 		this.loading = Promise.resolve().then(async () => {
 			const lastItem = last(this.rawState.unfilteredItems)
 			try {
@@ -157,7 +164,7 @@ export class ListModel<ElementType extends ListElement> {
 				const loadingStatus = complete ? ListLoadingState.Done : ListLoadingState.Idle
 				this.updateState({ loadingStatus, unfilteredItems: newUnfilteredItems, filteredItems: newFilteredItems })
 			} catch (e) {
-				this.updateState({ loadingStatus: ListLoadingState.ConnectionLost })
+				this.updateLoadingStatus(ListLoadingState.ConnectionLost)
 				if (!isOfflineError(e)) {
 					throw e
 				}
@@ -354,14 +361,18 @@ export class ListModel<ElementType extends ListElement> {
 		}
 	}
 
-	async loadAndSelect(itemId: Id, shouldStop: () => boolean): Promise<ElementType | null> {
+	async loadAndSelect(
+		itemId: Id,
+		shouldStop: () => boolean,
+		finder: (a: ElementType) => boolean = (item) => getElementId(item) === itemId,
+	): Promise<ElementType | null> {
 		await this.waitUtilInit()
 		let foundItem: ElementType | undefined = undefined
 		while (
 			// if we did find the target mail, stop
 			// make sure to call this before shouldStop or we might stop before trying to find an item
 			// this can probably be optimized to be binary search in most (all?) cases
-			!(foundItem = this.rawState.unfilteredItems.find((item) => getElementId(item) === itemId)) &&
+			!(foundItem = this.rawState.unfilteredItems.find(finder)) &&
 			!shouldStop() &&
 			// if we are done loading, stop
 			this.rawState.loadingStatus !== ListLoadingState.Done &&
@@ -494,6 +505,11 @@ export class ListModel<ElementType extends ListElement> {
 	readonly getSelectedAsArray: () => Array<ElementType> = memoizedWithHiddenArgument(
 		() => this.state,
 		(state: ListState<ElementType>) => [...state.selectedItems],
+	)
+
+	readonly isSelectionEmpty: () => boolean = memoizedWithHiddenArgument(
+		() => this.state,
+		(state: ListState<ElementType>) => state.selectedItems.size === 0,
 	)
 
 	readonly getUnfilteredAsArray: () => Array<ElementType> = memoizedWithHiddenArgument(

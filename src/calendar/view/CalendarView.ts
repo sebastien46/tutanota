@@ -6,22 +6,21 @@ import { ViewSlider } from "../../gui/nav/ViewSlider.js"
 import type { Shortcut } from "../../misc/KeyManager"
 import { keyManager } from "../../misc/KeyManager"
 import { Icons } from "../../gui/base/icons/Icons"
-import { downcast, getStartOfDay, memoized, ofClass } from "@tutao/tutanota-utils"
-import type { CalendarEvent, CalendarEventAttendee, GroupSettings, UserSettingsGroupRoot } from "../../api/entities/tutanota/TypeRefs.js"
+import { assertNotNull, downcast, getStartOfDay, isSameDayOfDate, LazyLoaded, memoized, ofClass } from "@tutao/tutanota-utils"
+import type { CalendarEvent, GroupSettings, UserSettingsGroupRoot } from "../../api/entities/tutanota/TypeRefs.js"
 import { createGroupSettings } from "../../api/entities/tutanota/TypeRefs.js"
-import { defaultCalendarColor, FeatureType, GroupType, Keys, reverse, ShareCapability, TimeFormat, WeekStart } from "../../api/common/TutanotaConstants"
+import { defaultCalendarColor, GroupType, Keys, reverse, ShareCapability, TimeFormat, WeekStart } from "../../api/common/TutanotaConstants"
 import { locator } from "../../api/main/MainLocator"
-import { getEventType, getStartOfTheWeekOffset, getStartOfTheWeekOffsetForUser, getTimeZone, shouldDefaultToAmPmTimeFormat } from "../date/CalendarUtils"
-import { Button, ButtonColor, ButtonType } from "../../gui/base/Button.js"
-import { NavButton, NavButtonColor } from "../../gui/base/NavButton.js"
+import { getStartOfTheWeekOffset, getStartOfTheWeekOffsetForUser, getTimeZone, getWeekNumber } from "../date/CalendarUtils"
+import { ButtonColor, ButtonType } from "../../gui/base/Button.js"
 import { CalendarMonthView } from "./CalendarMonthView"
 import { DateTime } from "luxon"
 import { NotFoundError } from "../../api/common/error/RestError"
-import { CalendarAgendaView } from "./CalendarAgendaView"
+import { CalendarAgendaView, CalendarAgendaViewAttrs } from "./CalendarAgendaView"
 import type { GroupInfo } from "../../api/entities/sys/TypeRefs.js"
-import { showEditCalendarDialog } from "./EditCalendarDialog"
+import { showEditCalendarDialog } from "../gui/EditCalendarDialog.js"
 import { styles } from "../../gui/styles"
-import { MultiDayCalendarView } from "./MultiDayCalendarView"
+import { Attrs, MultiDayCalendarView } from "./MultiDayCalendarView"
 import { Dialog } from "../../gui/base/Dialog"
 import { isApp } from "../../api/common/Env"
 import { px, size } from "../../gui/size"
@@ -35,10 +34,10 @@ import { GroupInvitationFolderRow } from "../../sharing/view/GroupInvitationFold
 import { SidebarSection } from "../../gui/SidebarSection"
 import type { HtmlSanitizer } from "../../misc/HtmlSanitizer"
 import { ProgrammingError } from "../../api/common/error/ProgrammingError"
-import { calendarNavConfiguration, CalendarViewType, getIconForViewType } from "./CalendarGuiUtils"
+import { calendarNavConfiguration, CalendarViewType, getGroupColors, shouldDefaultToAmPmTimeFormat } from "../gui/CalendarGuiUtils.js"
 import { CalendarViewModel, MouseOrPointerEvent } from "./CalendarViewModel"
-import { showNewCalendarEventEditDialog } from "./eventeditor/CalendarEventEditDialog.js"
-import { CalendarEventPopup } from "./eventpopup/CalendarEventPopup.js"
+import { showNewCalendarEventEditDialog } from "../gui/eventeditor-view/CalendarEventEditDialog.js"
+import { CalendarEventPopup } from "../gui/eventpopup/CalendarEventPopup.js"
 import { showProgressDialog } from "../../gui/dialogs/ProgressDialog"
 import type { CalendarInfo } from "../model/CalendarModel"
 import type Stream from "mithril/stream"
@@ -49,16 +48,17 @@ import { BottomNav } from "../../gui/nav/BottomNav.js"
 import { DrawerMenuAttrs } from "../../gui/nav/DrawerMenu.js"
 import { BaseTopLevelView } from "../../gui/BaseTopLevelView.js"
 import { TopLevelAttrs, TopLevelView } from "../../TopLevelView.js"
-import { getEnabledMailAddressesWithUser } from "../../mail/model/MailUtils.js"
-import { CalendarEventPopupViewModel } from "./eventpopup/CalendarEventPopupViewModel.js"
-import { isCustomizationEnabledForCustomer } from "../../api/common/utils/Utils.js"
-import { findAttendeeInAddresses, getEventWithDefaultTimes } from "../../api/common/utils/CommonCalendarUtils.js"
+import { getEventWithDefaultTimes } from "../../api/common/utils/CommonCalendarUtils.js"
 import { BackgroundColumnLayout } from "../../gui/BackgroundColumnLayout.js"
 import { theme } from "../../gui/theme.js"
 import { CalendarMobileHeader } from "./CalendarMobileHeader.js"
 import { CalendarDesktopToolbar } from "./CalendarDesktopToolbar.js"
-import { CalendarOperation } from "../date/eventeditor/CalendarEventModel.js"
-import { DaySelectorPopup } from "../date/DaySelectorPopup.js"
+import { SchedulerImpl } from "../../api/common/utils/Scheduler.js"
+import { LazySearchBar } from "../../misc/LazySearchBar.js"
+import { Time } from "../date/Time.js"
+import { DaySelectorSidebar } from "../gui/day-selector/DaySelectorSidebar.js"
+import { CalendarOperation } from "../gui/eventeditor-model/CalendarEventModel.js"
+import { DaySelectorPopup } from "../gui/day-selector/DaySelectorPopup.js"
 
 export type GroupColors = Map<Id, string>
 
@@ -79,21 +79,25 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 	// For sanitizing event descriptions, which get rendered as html in the CalendarEventPopup
 	private readonly htmlSanitizer: Promise<HtmlSanitizer>
 	private isDaySelectorExpanded: boolean = false
+	private redrawIntervalId: number | null = null
+	private redrawTimeoutId: number | null = null
 	oncreate: Component["oncreate"]
 	onremove: Component["onremove"]
 
-	constructor(vnode: Vnode<CalendarViewAttrs>) {
+	constructor({ attrs }: Vnode<CalendarViewAttrs>) {
 		super()
 		const userId = locator.logins.getUserController().user._id
 
-		this.viewModel = vnode.attrs.calendarViewModel
+		const scheduler = new LazyLoaded(async () => new SchedulerImpl(await locator.noZoneDateProvider(), window, window))
+
+		this.viewModel = attrs.calendarViewModel
 		this.currentViewType = deviceConfig.getDefaultCalendarView(userId) || CalendarViewType.MONTH
 		this.htmlSanitizer = import("../../misc/HtmlSanitizer").then((m) => m.htmlSanitizer)
 		this.sidebarColumn = new ViewColumn(
 			{
 				view: () =>
 					m(FolderColumnView, {
-						drawer: vnode.attrs.drawerAttrs,
+						drawer: attrs.drawerAttrs,
 						button: styles.isDesktopLayout()
 							? {
 									type: ButtonType.FolderColumnHeader,
@@ -102,7 +106,22 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 							  }
 							: null,
 						content: [
-							this.renderViewTypeSection(),
+							styles.isDesktopLayout()
+								? m(DaySelectorSidebar, {
+										selectedDate: this.viewModel.selectedDate(),
+										onDateSelected: (date) => {
+											this._setUrl(this.currentViewType, date)
+											m.redraw()
+										},
+										startOfTheWeekOffset: getStartOfTheWeekOffset(
+											downcast(locator.logins.getUserController().userSettingsGroupRoot.startOfTheWeek),
+										),
+										eventsForDays: this.viewModel.eventsForDays,
+										showDaySelection: this.currentViewType !== CalendarViewType.MONTH && this.currentViewType !== CalendarViewType.WEEK,
+										highlightToday: true,
+										highlightSelectedWeek: this.currentViewType === CalendarViewType.WEEK,
+								  })
+								: null,
 							m(
 								SidebarSection,
 								{
@@ -142,16 +161,13 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 					}),
 			},
 			ColumnType.Foreground,
-			size.first_col_min_width,
-			size.first_col_max_width,
-			() => (this.currentViewType === CalendarViewType.WEEK ? lang.get("month_label") : lang.get("calendar_label")),
+			{
+				minWidth: size.first_col_min_width,
+				maxWidth: size.first_col_max_width,
+				headerCenter: () => (this.currentViewType === CalendarViewType.WEEK ? lang.get("month_label") : lang.get("calendar_label")),
+			},
 		)
-		const getGroupColors = memoized((userSettingsGroupRoot: UserSettingsGroupRoot) => {
-			return userSettingsGroupRoot.groupSettings.reduce((acc, gc) => {
-				acc.set(gc.group, gc.color)
-				return acc
-			}, new Map())
-		})
+
 		this.contentColumn = new ViewColumn(
 			{
 				view: () => {
@@ -162,7 +178,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 							return m(BackgroundColumnLayout, {
 								backgroundColor: theme.navigation_bg,
 								desktopToolbar: () => this.renderDesktopToolbar(),
-								mobileHeader: () => this.renderMobileHeader(vnode.attrs.header),
+								mobileHeader: () => this.renderMobileHeader(attrs.header),
 								columnLayout: m(CalendarMonthView, {
 									temporaryEvents: this.viewModel.temporaryEvents,
 									eventsForDays: this.viewModel.eventsForDays,
@@ -187,7 +203,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 							return m(BackgroundColumnLayout, {
 								backgroundColor: theme.navigation_bg,
 								desktopToolbar: () => this.renderDesktopToolbar(),
-								mobileHeader: () => this.renderMobileHeader(vnode.attrs.header),
+								mobileHeader: () => this.renderMobileHeader(attrs.header),
 								columnLayout: m(MultiDayCalendarView, {
 									temporaryEvents: this.viewModel.temporaryEvents,
 									getEventsOnDays: this.viewModel.getEventsOnDaysToRender.bind(this.viewModel),
@@ -208,6 +224,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 									dragHandlerCallbacks: this.viewModel,
 									isDaySelectorExpanded: this.isDaySelectorExpanded,
 									eventsForDays: this.viewModel.eventsForDays,
+									selectedTime: this.viewModel.selectedTime,
 								}),
 							})
 
@@ -215,7 +232,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 							return m(BackgroundColumnLayout, {
 								backgroundColor: theme.navigation_bg,
 								desktopToolbar: () => this.renderDesktopToolbar(),
-								mobileHeader: () => this.renderMobileHeader(vnode.attrs.header),
+								mobileHeader: () => this.renderMobileHeader(attrs.header),
 								columnLayout: m(MultiDayCalendarView, {
 									temporaryEvents: this.viewModel.temporaryEvents,
 									getEventsOnDays: this.viewModel.getEventsOnDaysToRender.bind(this.viewModel),
@@ -235,6 +252,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 									dragHandlerCallbacks: this.viewModel,
 									isDaySelectorExpanded: this.isDaySelectorExpanded,
 									eventsForDays: this.viewModel.eventsForDays,
+									selectedTime: this.viewModel.selectedTime,
 								}),
 							})
 
@@ -242,19 +260,27 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 							return m(BackgroundColumnLayout, {
 								backgroundColor: theme.navigation_bg,
 								desktopToolbar: () => this.renderDesktopToolbar(),
-								mobileHeader: () => this.renderMobileHeader(vnode.attrs.header),
+								mobileHeader: () => this.renderMobileHeader(attrs.header),
 								columnLayout: m(CalendarAgendaView, {
 									selectedDate: this.viewModel.selectedDate(),
+									selectedTime: this.viewModel.selectedTime,
 									eventsForDays: this.viewModel.eventsForDays,
 									amPmFormat: shouldDefaultToAmPmTimeFormat(),
-									onEventClicked: (event, domEvent) => this._onEventSelected(event, domEvent, this.htmlSanitizer),
+									onEventClicked: (event, domEvent) => {
+										if (styles.isDesktopLayout()) {
+											this.viewModel.updatePreviewedEvent(event)
+										} else {
+											this._onEventSelected(event, domEvent, this.htmlSanitizer)
+										}
+									},
 									groupColors,
 									hiddenCalendars: this.viewModel.hiddenCalendars,
 									startOfTheWeekOffset: getStartOfTheWeekOffsetForUser(locator.logins.getUserController().userSettingsGroupRoot),
 									isDaySelectorExpanded: this.isDaySelectorExpanded,
 									onDateSelected: (date) => this._setUrl(CalendarViewType.AGENDA, date),
 									onShowDate: (date: Date) => this._setUrl(CalendarViewType.DAY, date),
-								}),
+									eventPreviewModel: this.viewModel.eventPreviewModel,
+								} satisfies CalendarAgendaViewAttrs),
 							})
 
 						default:
@@ -263,8 +289,10 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 				},
 			},
 			ColumnType.Background,
-			size.second_col_min_width + size.third_col_min_width,
-			size.third_col_max_width,
+			{
+				minWidth: size.second_col_min_width + size.third_col_min_width,
+				maxWidth: size.third_col_max_width,
+			},
 		)
 		this.viewSlider = new ViewSlider([this.sidebarColumn, this.contentColumn])
 
@@ -274,6 +302,15 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 
 		this.oncreate = () => {
 			keyManager.registerShortcuts(shortcuts)
+			// do both a timeout and interval to ensure the time indicator is done on the minute rather than some delay afterwards
+			if (!this.redrawIntervalId && !this.redrawTimeoutId) {
+				const timeToNextMinute = (60 - new Date().getSeconds()) * 1000
+				this.redrawTimeoutId = window.setTimeout(() => {
+					this.redrawIntervalId = window.setInterval(m.redraw, 1000 * 60)
+					this.redrawTimeoutId = null
+					m.redraw()
+				}, timeToNextMinute)
+			}
 			streamListeners.push(
 				this.viewModel.calendarInvitations.map(() => {
 					m.redraw()
@@ -284,36 +321,17 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 
 		this.onremove = () => {
 			keyManager.unregisterShortcuts(shortcuts)
-
+			if (this.redrawTimeoutId) {
+				window.clearTimeout(this.redrawTimeoutId)
+				this.redrawTimeoutId = null
+			}
+			if (this.redrawIntervalId) {
+				window.clearInterval(this.redrawIntervalId)
+				this.redrawIntervalId = null
+			}
 			for (let listener of streamListeners) {
 				listener.end(true)
 			}
-		}
-	}
-
-	private renderViewTypeSection(): Children {
-		if (!styles.isDesktopLayout()) {
-			return null
-		} else {
-			return m(
-				SidebarSection,
-				{
-					name: "view_label",
-					button:
-						this.currentViewType !== CalendarViewType.AGENDA
-							? m(Button, {
-									label: "today_label",
-									click: () => {
-										this._setUrl(m.route.param("view"), new Date())
-										this.viewSlider.focus(this.contentColumn)
-									},
-									colors: ButtonColor.Nav,
-									type: ButtonType.Primary,
-							  })
-							: null,
-				},
-				this._renderCalendarViewButtons(),
-			)
 		}
 	}
 
@@ -325,7 +343,16 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 			"detailed",
 			(viewType, next) => this._viewPeriod(viewType, next),
 		)
-		return m(CalendarDesktopToolbar, { navConfig })
+		return m(CalendarDesktopToolbar, {
+			navConfig,
+			viewType: this.currentViewType,
+			onToday: () => {
+				// in case it has been set, when onToday is called we definitely do not want the time to be ignored
+				this.viewModel.ignoreNextValidTimeSelection = false
+				this._setUrl(m.route.param("view"), new Date())
+			},
+			onViewTypeSelected: (viewType) => this._setUrl(viewType, this.viewModel.selectedDate()),
+		})
 	}
 
 	private renderMobileHeader(header: AppHeaderAttrs) {
@@ -341,10 +368,13 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 				this.viewModel.weekStart,
 				"short",
 				(viewType, next) => this._viewPeriod(viewType, next),
-				true,
 			),
 			onCreateEvent: () => this._createNewEventDialog(),
-			onToday: () => this._setUrl(m.route.param("view"), new Date()),
+			onToday: () => {
+				// in case it has been set, when onToday is called we definitely do not want the time to be ignored
+				this.viewModel.ignoreNextValidTimeSelection = false
+				this._setUrl(m.route.param("view"), new Date())
+			},
 			onViewTypeSelected: (viewType) => this._setUrl(viewType, this.viewModel.selectedDate()),
 			onTap: (_event, dom) => {
 				if (this.currentViewType !== CalendarViewType.MONTH && styles.isSingleColumnLayout()) {
@@ -405,13 +435,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 	}
 
 	async _createNewEventDialog(date: Date | null = null): Promise<void> {
-		let dateToUse: Date
-		if (date != null) {
-			dateToUse = date
-		} else {
-			// in agenda view, we always show today as the current date, so new event should be created today instead of the (invisibly) selected date in the model.
-			dateToUse = this.currentViewType === CalendarViewType.AGENDA ? getStartOfDay(new Date()) : this.viewModel.selectedDate()
-		}
+		const dateToUse = date ?? this.viewModel.selectedDate()
 
 		// Disallow creation of events when there is no existing calendar
 		let calendarInfos = this.viewModel.getCalendarInfosCreateIfNeeded()
@@ -454,10 +478,12 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 				unit = "day"
 				break
 			case CalendarViewType.AGENDA:
-				duration = {
-					week: this.isDaySelectorExpanded ? 0 : 1,
-					month: this.isDaySelectorExpanded ? 1 : 0,
-				}
+				duration = styles.isDesktopLayout()
+					? { day: 1 }
+					: {
+							week: this.isDaySelectorExpanded ? 0 : 1,
+							month: this.isDaySelectorExpanded ? 1 : 0,
+					  }
 				unit = "day"
 				break
 
@@ -469,68 +495,12 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 		const newDate = next ? dateTime.plus(duration).startOf(unit).toJSDate() : dateTime.minus(duration).startOf(unit).toJSDate()
 
 		this.viewModel.selectedDate(newDate)
+		// ignoreNextTimeSelection is set to true here, as viewPeriod is only called when changing the view by swiping (or using previous/next buttons)
+		// and we don't want jarring time jumps when doing that
+		this.viewModel.ignoreNextValidTimeSelection = true
+		this._setUrl(viewType, newDate, false)
 
 		m.redraw()
-
-		this._setUrl(viewType, newDate)
-	}
-
-	_renderCalendarViewButtons(): Children {
-		const calendarViewValues: Array<{ name: string; viewType: CalendarViewType }> = [
-			{
-				name: lang.get("agenda_label"),
-				viewType: CalendarViewType.AGENDA,
-			},
-			{
-				name: lang.get("day_label"),
-				viewType: CalendarViewType.DAY,
-			},
-			{
-				name: lang.get("week_label"),
-				viewType: CalendarViewType.WEEK,
-			},
-			{
-				name: lang.get("month_label"),
-				viewType: CalendarViewType.MONTH,
-			},
-		]
-
-		return calendarViewValues.map((viewData) =>
-			m(
-				".folder-row.flex.flex-row", // undo the padding of NavButton and prevent .folder-row > a from selecting NavButton
-				m(
-					".flex-grow.mlr-button",
-					m(NavButton, {
-						label: () => viewData.name,
-						icon: () => getIconForViewType(viewData.viewType),
-						href: "#",
-						isSelectedPrefix: this.currentViewType == viewData.viewType,
-						colors: NavButtonColor.Nav,
-						// Close side menu
-						click: () => {
-							this._setUrl(viewData.viewType, this.viewModel.selectedDate())
-
-							this.viewSlider.focus(this.contentColumn)
-						},
-						persistentBackground: true,
-					}),
-				),
-			),
-		)
-	}
-
-	handleBackButton(): boolean {
-		const route = m.route.get()
-
-		if (route.startsWith("/calendar/day")) {
-			m.route.set(route.replace("day", "month"))
-			return true
-		} else if (route.startsWith("/calendar/week")) {
-			m.route.set(route.replace("week", "month"))
-			return true
-		} else {
-			return false
-		}
 	}
 
 	_onPressedAddCalendar() {
@@ -565,8 +535,9 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 	}
 
 	_renderCalendars(shared: boolean): Children {
-		return this.viewModel.calendarInfos.isLoaded()
-			? Array.from(this.viewModel.calendarInfos.getLoaded().values())
+		const calendarInfos = this.viewModel.calendarInfos
+		return calendarInfos.size > 0
+			? Array.from(calendarInfos.values())
 					.filter((calendarInfo) => calendarInfo.shared === shared)
 					.map((calendarInfo) => {
 						const { userSettingsGroupRoot } = locator.logins.getUserController()
@@ -725,7 +696,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 					existingGroupSettings.color = properties.color
 					existingGroupSettings.name = shared && properties.name !== groupInfo.name ? properties.name : null
 				} else {
-					const newGroupSettings = Object.assign(createGroupSettings(), {
+					const newGroupSettings = createGroupSettings({
 						group: groupInfo.group,
 						color: properties.color,
 						name: shared && properties.name !== groupInfo.name ? properties.name : null,
@@ -745,7 +716,10 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 			".main-view",
 			m(this.viewSlider, {
 				header: m(Header, {
-					handleBackPress: () => this.handleBackButton(),
+					searchBar: () =>
+						m(LazySearchBar, {
+							placeholder: lang.get("searchCalendar_placeholder"),
+						}),
 					...attrs.header,
 				}),
 				bottomNav: m(BottomNav),
@@ -759,25 +733,12 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 		} else {
 			// @ts-ignore
 			this.currentViewType = CalendarViewTypeByValue[args.view] ? args.view : CalendarViewType.MONTH
+
 			const urlDateParam = args.date
 
 			if (urlDateParam) {
 				// Unlike JS Luxon assumes local time zone when parsing and not UTC. That's what we want
 				const luxonDate = DateTime.fromISO(urlDateParam)
-
-				if (
-					this.currentViewType === CalendarViewType.AGENDA &&
-					!luxonDate.equals(
-						DateTime.now().set({
-							hour: 0,
-							minute: 0,
-							second: 0,
-						}),
-					) &&
-					styles.isDesktopLayout()
-				) {
-					this._setUrl(CalendarViewType.AGENDA, new Date())
-				}
 
 				let date = new Date()
 
@@ -789,6 +750,14 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 					this.viewModel.selectedDate(date)
 
 					m.redraw()
+				}
+
+				const today = new Date()
+				if (isSameDayOfDate(today, date) || (args.view === "week" && getWeekNumber(date) === getWeekNumber(today))) {
+					const time = Time.fromDate(today)
+					this.viewModel.setSelectedTime(time)
+				} else {
+					this.viewModel.setSelectedTime(undefined)
 				}
 			}
 
@@ -823,12 +792,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 
 		const x = domEvent.clientX
 		const y = domEvent.clientY
-		const [calendars, mailboxDetails, htmlSanitizer] = await Promise.all([
-			this.viewModel.calendarInfos.getAsync(),
-			locator.mailModel.getUserMailboxDetails(),
-			htmlSanitizerPromise,
-		])
-		const mailboxProperties = await locator.mailModel.getMailboxProperties(mailboxDetails.mailboxGroupRoot)
+
 		// We want the popup to show at the users mouse
 		const rect = {
 			bottom: y,
@@ -838,22 +802,10 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 			left: x,
 			right: x,
 		}
-		const userController = locator.logins.getUserController()
-		const customer = await userController.loadCustomer()
-		const ownMailAddresses = getEnabledMailAddressesWithUser(mailboxDetails, userController.userGroupInfo)
-		const ownAttendee: CalendarEventAttendee | null = findAttendeeInAddresses(selectedEvent.attendees, ownMailAddresses)
-		const eventType = getEventType(selectedEvent, calendars, ownMailAddresses, userController.user)
-		const hasBusinessFeature = isCustomizationEnabledForCustomer(customer, FeatureType.BusinessFeatureEnabled) || (await userController.isNewPaidPlan())
-		const lazyIndexEntry = async () => (selectedEvent.uid != null ? locator.calendarFacade.getEventsByUid(selectedEvent.uid) : null)
-		const popupModel = new CalendarEventPopupViewModel(
-			selectedEvent,
-			await locator.calendarModel(),
-			eventType,
-			hasBusinessFeature,
-			ownAttendee,
-			lazyIndexEntry,
-			async (mode: CalendarOperation) => locator.calendarEventModel(mode, selectedEvent, mailboxDetails, mailboxProperties, null),
-		)
+
+		const calendars = await this.viewModel.getCalendarInfosCreateIfNeeded()
+		const [popupModel, htmlSanitizer] = await Promise.all([locator.calendarEventPreviewModel(selectedEvent, calendars), htmlSanitizerPromise])
+
 		new CalendarEventPopup(popupModel, rect, htmlSanitizer).show()
 	}
 
@@ -861,6 +813,7 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 		// When the user clicks the month name in the header, the target can be the month's name or the icon on the right
 		// side of month's name, so we hardcoded the left spacing to be the same used by the month name, so doesn't matter
 		// if the user clicks on month's name or on the icon
+		// noinspection JSSuspiciousNameCombination
 		const elementRect = { ...dom.getBoundingClientRect(), left: size.button_height }
 
 		const selector = new DaySelectorPopup(elementRect, {
@@ -872,7 +825,6 @@ export class CalendarView extends BaseTopLevelView implements TopLevelView<Calen
 			},
 			startOfTheWeekOffset: getStartOfTheWeekOffset(locator.logins.getUserController().userSettingsGroupRoot.startOfTheWeek as WeekStart),
 			eventsForDays: this.viewModel.eventsForDays,
-			showDaySelection: true,
 			highlightToday: true,
 			highlightSelectedWeek: this.currentViewType === CalendarViewType.WEEK,
 		})

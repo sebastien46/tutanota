@@ -5,6 +5,7 @@ export const size = {
 	icon_size_xl: 32,
 	icon_size_large: 24,
 	icon_size_medium: 16,
+	icon_size_small: 12,
 	icon_message_box: 80,
 	hpad_small: 5,
 	hpad: 10,
@@ -34,6 +35,8 @@ export const size = {
 	button_height_compact: 30,
 	button_icon_bg_size: 32,
 	button_floating_size: 56,
+	icon_segment_control_button_height: 36,
+	icon_segment_control_button_width: 48,
 
 	navbar_height: 70,
 	navbar_height_mobile: 52,

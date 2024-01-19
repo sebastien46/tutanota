@@ -6,18 +6,17 @@ import { DefaultEntityRestCache } from "../../../../../src/api/worker/rest/Defau
 import { clone, downcast, isSameTypeRef, neverNull, noOp } from "@tutao/tutanota-utils"
 import type { AlarmInfo, User, UserAlarmInfo } from "../../../../../src/api/entities/sys/TypeRefs.js"
 import {
-	createAlarmInfo,
-	createCalendarEventRef,
-	createPushIdentifierList,
-	createUser,
-	createUserAlarmInfo,
-	createUserAlarmInfoListType,
+	AlarmInfoTypeRef,
+	CalendarEventRefTypeRef,
+	PushIdentifierListTypeRef,
 	PushIdentifierTypeRef,
+	UserAlarmInfoListTypeTypeRef,
 	UserAlarmInfoTypeRef,
+	UserTypeRef,
 } from "../../../../../src/api/entities/sys/TypeRefs.js"
 import { getElementId, getLetId, getListId } from "../../../../../src/api/common/utils/EntityUtils.js"
 import type { CalendarEvent } from "../../../../../src/api/entities/tutanota/TypeRefs.js"
-import { CalendarEventTypeRef, createCalendarEvent } from "../../../../../src/api/entities/tutanota/TypeRefs.js"
+import { CalendarEventTypeRef } from "../../../../../src/api/entities/tutanota/TypeRefs.js"
 import { ProgressMonitor } from "../../../../../src/api/common/utils/ProgressMonitor.js"
 import { assertThrows, mockAttribute, spy, unmockAttribute } from "@tutao/tutanota-test-utils"
 import { ImportError } from "../../../../../src/api/common/error/ImportError.js"
@@ -31,8 +30,9 @@ import { UserFacade } from "../../../../../src/api/worker/facades/UserFacade"
 import { InfoMessageHandler } from "../../../../../src/gui/InfoMessageHandler.js"
 import { ConnectionError } from "../../../../../src/api/common/error/RestError.js"
 import { EntityClient } from "../../../../../src/api/common/EntityClient.js"
+import { createTestEntity } from "../../../TestUtils.js"
 
-o.spec("CalendarFacadeTest", async function () {
+o.spec("CalendarFacadeTest", function () {
 	let userAlarmInfoListId: Id
 	let user: User
 	let userFacade: UserFacade
@@ -71,22 +71,22 @@ o.spec("CalendarFacadeTest", async function () {
 	}
 
 	function makeEvent(listId: Id, elementId?: Id): CalendarEvent {
-		return createCalendarEvent({
+		return createTestEntity(CalendarEventTypeRef, {
 			_id: [listId, elementId || restClientMock.getNextId()],
 			uid: `${listId}-${elementId}`,
 		})
 	}
 
 	function makeUserAlarmInfo(event: CalendarEvent): UserAlarmInfo {
-		return createUserAlarmInfo({
+		return createTestEntity(UserAlarmInfoTypeRef, {
 			_id: [userAlarmInfoListId, restClientMock.getNextId()],
 			alarmInfo: makeAlarmInfo(event),
 		})
 	}
 
 	function makeAlarmInfo(event: CalendarEvent): AlarmInfo {
-		return createAlarmInfo({
-			calendarRef: createCalendarEventRef({
+		return createTestEntity(AlarmInfoTypeRef, {
+			calendarRef: createTestEntity(CalendarEventRefTypeRef, {
 				elementId: getElementId(event),
 				listId: getListId(event),
 			}),
@@ -97,11 +97,11 @@ o.spec("CalendarFacadeTest", async function () {
 		restClientMock = new EntityRestClientMock()
 		userAlarmInfoListId = restClientMock.getNextId()
 
-		user = createUser({
-			alarmInfoList: createUserAlarmInfoListType({
+		user = createTestEntity(UserTypeRef, {
+			alarmInfoList: createTestEntity(UserAlarmInfoListTypeTypeRef, {
 				alarms: userAlarmInfoListId,
 			}),
-			pushIdentifierList: createPushIdentifierList({ list: "pushIdentifierList" }),
+			pushIdentifierList: createTestEntity(PushIdentifierListTypeRef, { list: "pushIdentifierList" }),
 			userGroup: downcast({
 				group: "Id",
 			}),
@@ -136,7 +136,7 @@ o.spec("CalendarFacadeTest", async function () {
 		)
 	})
 
-	o.spec("saveCalendarEvents", async function () {
+	o.spec("saveCalendarEvents", function () {
 		o.beforeEach(async function () {
 			progressMonitor = downcast({
 				workDone: noOp,
@@ -435,7 +435,7 @@ o.spec("CalendarFacadeTest", async function () {
 		})
 
 		o("sorts array with len 1", function () {
-			const arr = [createCalendarEvent({ recurrenceId: new Date("2023-07-17T13:00") })] as Array<CalendarEventAlteredInstance>
+			const arr = [createTestEntity(CalendarEventTypeRef, { recurrenceId: new Date("2023-07-17T13:00") })] as Array<CalendarEventAlteredInstance>
 			const expected = clone(arr)
 			sortByRecurrenceId(arr)
 			o(arr).deepEquals(expected)
@@ -443,8 +443,8 @@ o.spec("CalendarFacadeTest", async function () {
 
 		o("sorts array that's not sorted", function () {
 			const arr = [
-				createCalendarEvent({ recurrenceId: new Date("2023-07-17T13:00") }),
-				createCalendarEvent({ recurrenceId: new Date("2023-07-16T13:00") }),
+				createTestEntity(CalendarEventTypeRef, { recurrenceId: new Date("2023-07-17T13:00") }),
+				createTestEntity(CalendarEventTypeRef, { recurrenceId: new Date("2023-07-16T13:00") }),
 			] as Array<CalendarEventAlteredInstance>
 			const expected = clone(arr)
 			const smaller = expected[1]

@@ -18,18 +18,17 @@ export function birthdayToIsoDate(birthday: Birthday): string {
  */
 export function isoDateToBirthday(birthdayIso: string): Birthday {
 	//return new Date(Number(newBirthday.year), Number(newBirthday.month) - 1, Number(newBirthday.day))
-	const birthday = createBirthday()
-
+	const birthdayInitializer: Partial<Birthday> = {}
 	if (birthdayIso.startsWith("--")) {
-		const monthAndDay = birthdayIso.substr(2).split("-")
+		const monthAndDay = birthdayIso.substring(2).split("-")
 
 		if (monthAndDay.length !== 2) {
 			throw new ParsingError("invalid birthday without year: " + birthdayIso)
 		}
 
-		birthday.month = monthAndDay[0]
-		birthday.day = monthAndDay[1]
-		birthday.year = null
+		birthdayInitializer.month = monthAndDay[0]
+		birthdayInitializer.day = monthAndDay[1]
+		birthdayInitializer.year = null
 	} else {
 		const yearMonthAndDay = birthdayIso.split("-")
 
@@ -37,19 +36,19 @@ export function isoDateToBirthday(birthdayIso: string): Birthday {
 			throw new ParsingError("invalid birthday: " + birthdayIso)
 		}
 
-		birthday.year = yearMonthAndDay[0]
-		birthday.month = yearMonthAndDay[1]
-		birthday.day = yearMonthAndDay[2]
+		birthdayInitializer.year = yearMonthAndDay[0]
+		birthdayInitializer.month = yearMonthAndDay[1]
+		birthdayInitializer.day = yearMonthAndDay[2]
 	}
 
-	if (!isValidBirthday(birthday)) {
+	if (!isValidBirthday(birthdayInitializer)) {
 		throw new ParsingError("Invalid birthday format: " + birthdayIso)
 	}
 
-	return birthday
+	return createBirthday(birthdayInitializer)
 }
 
-export function isValidBirthday(birthday: Birthday): boolean {
+export function isValidBirthday(birthday: Partial<Birthday>): birthday is Birthday {
 	const day = Number(birthday.day)
 	const month = Number(birthday.month)
 	const year = birthday.year ? Number(birthday.year) : null
@@ -61,10 +60,10 @@ export function isValidBirthday(birthday: Birthday): boolean {
  * Export for testing
  */
 export function oldBirthdayToBirthday(oldBirthday: Date): Birthday {
-	let bDayDetails = createBirthday()
 	let birthdayString = formatSortableDate(oldBirthday).split("-")
-	bDayDetails.day = String(Number(birthdayString[2]))
-	bDayDetails.month = String(Number(birthdayString[1]))
-	bDayDetails.year = String(Number(birthdayString[0]))
-	return bDayDetails
+	return createBirthday({
+		day: String(Number(birthdayString[2])),
+		month: String(Number(birthdayString[1])),
+		year: String(Number(birthdayString[0])),
+	})
 }

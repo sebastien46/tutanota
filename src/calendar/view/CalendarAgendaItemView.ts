@@ -1,52 +1,49 @@
 import m, { Children, Component, Vnode } from "mithril"
-import { isAllDayEvent } from "../../api/common/utils/CommonCalendarUtils.js"
-import { lang } from "../../misc/LanguageViewModel.js"
-import { eventEndsAfterDay, eventStartsBefore, formatEventTime, getEndOfDayWithZone } from "../date/CalendarUtils.js"
-import { EventTextTimeOption } from "../../api/common/TutanotaConstants.js"
 import { CalendarEvent } from "../../api/entities/tutanota/TypeRefs.js"
+import { stateBgHover } from "../../gui/builtinThemes.js"
+import { theme } from "../../gui/theme.js"
+import { styles } from "../../gui/styles.js"
+import { DefaultAnimationTime } from "../../gui/animation/Animations.js"
+import { px } from "../../gui/size.js"
 
-interface CalendarAgendaItemViewAttrs {
+export interface CalendarAgendaItemViewAttrs {
 	day: Date
 	zone: string
 	event: CalendarEvent
 	color: string
 	click: (domEvent: MouseEvent) => unknown
+	timeText: string
+	limitSummaryWidth?: boolean
+	selected?: boolean
+	height?: number
 }
 
 export class CalendarAgendaItemView implements Component<CalendarAgendaItemViewAttrs> {
 	view({ attrs }: Vnode<CalendarAgendaItemViewAttrs>): Children {
-		return m(
-			".flex.items-center.gap-vpad.click.state-bg.plr.border-radius.pt-s.pb-s",
-			{
-				onclick: attrs.click,
-			},
-			[
-				m("", {
+		return [
+			m(
+				".flex.items-center.gap-vpad.click.plr.border-radius.pt-s.pb-s.rel",
+				{
+					class: (styles.isDesktopLayout() ? "" : "state-bg") + (attrs.limitSummaryWidth ? "limit-width full-width" : ""),
+					onclick: attrs.click,
 					style: {
-						minWidth: "16px",
-						minHeight: "16px",
-						borderRadius: "50%",
-						backgroundColor: `#${attrs.color}`,
+						transition: `background ${DefaultAnimationTime}ms`,
+						background: styles.isDesktopLayout() ? (attrs.selected ? stateBgHover : theme.list_bg) : undefined,
+						height: attrs.height ? px(attrs.height) : undefined,
 					},
-				}),
-				m(".flex.col", [m(".b", attrs.event.summary), m("", this.formatTimes(attrs))]),
-			],
-		)
-	}
-
-	private formatTimes({ day, event, zone }: CalendarAgendaItemViewAttrs): string {
-		if (isAllDayEvent(event)) {
-			return lang.get("allDay_label")
-		} else {
-			const startsBefore = eventStartsBefore(day, zone, event)
-			const endsAfter = eventEndsAfterDay(day, zone, event)
-			if (startsBefore && endsAfter) {
-				return lang.get("allDay_label")
-			} else {
-				const startTime: Date = startsBefore ? day : event.startTime
-				const endTime: Date = endsAfter ? getEndOfDayWithZone(day, zone) : event.endTime
-				return formatEventTime({ startTime, endTime }, EventTextTimeOption.START_END_TIME)
-			}
-		}
+				},
+				[
+					m(".icon.circle", {
+						style: {
+							backgroundColor: `#${attrs.color}`,
+						},
+					}),
+					m(".flex.col", { class: attrs.limitSummaryWidth ? "min-width-0" : "" }, [
+						m("p.b.m-0", { class: attrs.limitSummaryWidth ? "text-ellipsis" : "" }, attrs.event.summary),
+						m("", attrs.timeText),
+					]),
+				],
+			),
+		]
 	}
 }

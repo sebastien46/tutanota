@@ -21,13 +21,13 @@ import stream from "mithril/stream"
 import { Dialog, DialogType } from "../gui/base/Dialog"
 import { DropDownSelector, SelectorItem } from "../gui/base/DropDownSelector"
 import m, { Children } from "mithril"
-import { isOfflineError } from "../api/common/utils/ErrorCheckUtils.js"
+import { isOfflineError } from "../api/common/utils/ErrorUtils.js"
 import { LoginController } from "../api/main/LoginController.js"
 import { CustomerProperties, CustomerPropertiesTypeRef, CustomerTypeRef } from "../api/entities/sys/TypeRefs.js"
 import { EntityClient } from "../api/common/EntityClient.js"
-import { EntityUpdateData, EventController, isUpdateForTypeRef } from "../api/main/EventController.js"
+import { EventController } from "../api/main/EventController.js"
 import { createUserSettingsGroupRoot, UserSettingsGroupRootTypeRef } from "../api/entities/tutanota/TypeRefs.js"
-
+import { EntityUpdateData, isUpdateForTypeRef } from "../api/common/utils/EntityUpdateUtils.js"
 const PRESELECTED_LIKERT_VALUE = null
 
 type ExperienceSamplingOptions = {

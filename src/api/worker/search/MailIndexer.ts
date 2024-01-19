@@ -13,7 +13,6 @@ import {
 } from "../../entities/tutanota/TypeRefs.js"
 import { ConnectionError, NotAuthorizedError, NotFoundError } from "../../common/error/RestError"
 import { typeModels } from "../../entities/tutanota/TypeModels"
-import { containsEventOfType } from "../../common/utils/Utils"
 import { assertNotNull, first, groupBy, groupByAndMap, isNotNull, neverNull, noOp, ofClass, promiseMap, splitInChunks, TypeRef } from "@tutao/tutanota-utils"
 import { elementIdPart, isSameId, listIdPart, timestampToGeneratedId } from "../../common/utils/EntityUtils"
 import { _createNewIndexUpdate, encryptIndexKeyBase64, filterMailMemberships, getPerformanceTimestamp, htmlToText, typeRefToTypeInfo } from "./IndexUtils"
@@ -30,11 +29,14 @@ import { EntityClient } from "../../common/EntityClient"
 import { ProgressMonitor } from "../../common/utils/ProgressMonitor"
 import type { SomeEntity } from "../../common/EntityTypes"
 import { isDetailsDraft, isLegacyMail, MailWrapper } from "../../common/MailWrapper.js"
-import { EntityUpdateData } from "../../main/EventController"
 import { EphemeralCacheStorage } from "../rest/EphemeralCacheStorage"
 import { InfoMessageHandler } from "../../../gui/InfoMessageHandler.js"
 import { ElementDataOS, GroupDataOS, Metadata, MetaDataOS } from "./IndexTables.js"
 import { MailFacade } from "../facades/lazy/MailFacade.js"
+import { getDisplayedSender, MailAddressAndName } from "../../common/mail/CommonMailUtils.js"
+import { containsEventOfType, EntityUpdateData } from "../../common/utils/EntityUpdateUtils.js"
+import { b64UserIdHash } from "./DbFacade.js"
+import { hasError } from "../../common/utils/ErrorUtils.js"
 
 export const INITIAL_MAIL_INDEX_INTERVAL_DAYS = 28
 const ENTITY_INDEXER_CHUNK = 20
@@ -88,6 +90,12 @@ export class MailIndexer {
 		let startTimeIndex = getPerformanceTimestamp()
 		const mail = mailWrapper.getMail()
 
+		// avoid caching system@tutanota.de since the user wouldn't be searching for this
+		let senderToIndex: MailAddressAndName
+
+		const hasSender = mail.sender != null
+		if (hasSender) senderToIndex = getDisplayedSender(mail)
+
 		const MailModel = typeModels.Mail
 		let keyToIndexEntries = this._core.createIndexEntriesForAttributes(mail, [
 			{
@@ -120,7 +128,7 @@ export class MailIndexer {
 			},
 			{
 				attribute: MailModel.associations["sender"],
-				value: () => (mail.sender ? mail.sender.name + " <" + mail.sender.address + ">" : ""),
+				value: () => (hasSender ? senderToIndex.name + " <" + senderToIndex.address + ">" : ""),
 			},
 			{
 				attribute: MailModel.associations["body"],
@@ -266,11 +274,11 @@ export class MailIndexer {
 		})
 	}
 
-	disableMailIndexing(): Promise<void> {
+	disableMailIndexing(userId: Id): Promise<void> {
 		this.mailIndexingEnabled = false
 		this._indexingCancelled = true
 		this._excludedListIds = []
-		return this._db.dbFacade.deleteDatabase()
+		return this._db.dbFacade.deleteDatabase(b64UserIdHash(userId))
 	}
 
 	cancelMailIndexing(): Promise<void> {
@@ -285,10 +293,7 @@ export class MailIndexer {
 	async extendIndexIfNeeded(user: User, newOldestTimestamp: number): Promise<void> {
 		if (this.currentIndexTimestamp > FULL_INDEXED_TIMESTAMP && this.currentIndexTimestamp > newOldestTimestamp) {
 			this.mailboxIndexingPromise = this.mailboxIndexingPromise
-				.then(
-					async () => await this.indexMailboxes(user, newOldestTimestamp),
-					async () => await this.indexMailboxes(user, newOldestTimestamp),
-				)
+				.then(() => this.indexMailboxes(user, newOldestTimestamp))
 				.catch(
 					ofClass(CancelledError, (e) => {
 						console.log("extend mail index has been cancelled", e)
@@ -740,8 +745,9 @@ class IndexLoader {
 
 	async loadMailDetails(mails: Mail[]): Promise<MailWrapper[]> {
 		const result: Array<MailWrapper> = []
+		let mailsWithoutErros = mails.filter((m) => !hasError(m))
 		//legacy mails
-		const legacyMails = mails.filter((m) => isLegacyMail(m))
+		const legacyMails = mailsWithoutErros.filter((m) => isLegacyMail(m))
 		const bodyIds = legacyMails.map((m) => assertNotNull(m.body))
 		result.push(
 			...(await this.loadInChunks(MailBodyTypeRef, null, bodyIds)).map((body) => {
@@ -750,7 +756,7 @@ class IndexLoader {
 			}),
 		)
 		// mailDetails stored as blob
-		let mailDetailsBlobMails = mails.filter((m) => !isLegacyMail(m) && !isDetailsDraft(m))
+		let mailDetailsBlobMails = mailsWithoutErros.filter((m) => !isLegacyMail(m) && !isDetailsDraft(m))
 		const listIdToMailDetailsBlobIds: Map<Id, Array<Id>> = groupByAndMap(
 			mailDetailsBlobMails,
 			(m) => assertNotNull(m.mailDetails)[0],
@@ -770,7 +776,7 @@ class IndexLoader {
 			)
 		}
 		// mailDetails stored in db (draft)
-		let mailDetailsDraftMails = mails.filter((m) => isDetailsDraft(m))
+		let mailDetailsDraftMails = mailsWithoutErros.filter((m) => isDetailsDraft(m))
 		const listIdToMailDetailsDraftIds: Map<Id, Array<Id>> = groupByAndMap(
 			mailDetailsDraftMails,
 			(m) => assertNotNull(m.mailDetailsDraft)[0],

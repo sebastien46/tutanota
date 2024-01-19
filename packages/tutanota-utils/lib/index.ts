@@ -40,7 +40,7 @@ export {
 	partitionAsync,
 	arrayOf,
 	count,
-	mapMapAsync,
+	zeroOut,
 } from "./ArrayUtils.js"
 export { AsyncResult } from "./AsyncResult.js"
 export { intersection, trisectingDiff, setAddAll, max, maxBy, findBy, min, minBy, mapWith, mapWithout, setEquals, setMap } from "./CollectionUtils.js"
@@ -107,7 +107,6 @@ export {
 	toLowerCase,
 	localeCompare,
 	byteLength,
-	replaceAll,
 } from "./StringUtils.js"
 export { TypeRef, isSameTypeRefByAttr, isSameTypeRef, getTypeId, isSameTypeRefNullable } from "./TypeRef.js"
 export {
@@ -153,6 +152,21 @@ export {
 } from "./Utils.js"
 export type { Callback, DeferredObject, lazy, lazyAsync, Thunk, DeferredObjectWithHandler, MaybeLazy, TimeoutSetter, ErrorInfo } from "./Utils.js"
 
+export {
+	callWebAssemblyFunctionWithArguments,
+	allocateBuffer,
+	Ptr,
+	ConstPtr,
+	FreeFN,
+	MutableUint8Array,
+	SecureFreeUint8Array,
+	mutableSecureFree,
+	secureFree,
+	mutable,
+} from "./WebAssembly.js"
+
 export { mod, clamp } from "./MathUtils.js"
 
 export { renderCsv } from "./Csv.js"
+
+export { tokenize } from "./Tokenizer.js"

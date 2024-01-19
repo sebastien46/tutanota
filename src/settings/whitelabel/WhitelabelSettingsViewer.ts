@@ -20,13 +20,11 @@ import {
 	CustomerTypeRef,
 	WhitelabelConfigTypeRef,
 } from "../../api/entities/sys/TypeRefs.js"
-import { getCustomMailDomains, getWhitelabelDomain } from "../../api/common/utils/Utils"
 import { InfoLink, lang } from "../../misc/LanguageViewModel"
 import { FeatureType, OperationType } from "../../api/common/TutanotaConstants"
 import { progressIcon } from "../../gui/base/Icon"
 import { showProgressDialog } from "../../gui/dialogs/ProgressDialog"
-import type { EntityUpdateData } from "../../api/main/EventController"
-import { isUpdateForTypeRef } from "../../api/main/EventController"
+
 import * as EditNotificationEmailDialog from "../EditNotificationEmailDialog"
 import { showBuyOrSetNotificationEmailDialog } from "../EditNotificationEmailDialog"
 import { isWhitelabelActive } from "../../subscription/SubscriptionUtils"
@@ -48,6 +46,8 @@ import { locator } from "../../api/main/MainLocator"
 import { SelectorItem, SelectorItemList } from "../../gui/base/DropDownSelector.js"
 import { BrandingDomainService } from "../../api/entities/sys/Services"
 import { LoginController } from "../../api/main/LoginController.js"
+import { getCustomMailDomains, getWhitelabelDomainInfo } from "../../api/common/utils/CustomerUtils.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
 
@@ -176,8 +176,9 @@ export class WhitelabelSettingsViewer implements UpdatableSettingsViewer {
 				clear(neverNull(this._whitelabelConfig).whitelabelRegistrationDomains)
 
 				if (domain) {
-					const domainWrapper = createStringWrapper()
-					domainWrapper.value = domain
+					const domainWrapper = createStringWrapper({
+						value: domain,
+					})
 					neverNull(this._whitelabelConfig).whitelabelRegistrationDomains.push(domainWrapper)
 				}
 
@@ -287,7 +288,7 @@ export class WhitelabelSettingsViewer implements UpdatableSettingsViewer {
 			this._customer.isLoaded() &&
 			this._customer.getLoaded().customizations.some((c) => c.feature === FeatureType.WhitelabelParent) &&
 			this._customerInfo.isLoaded() &&
-			getWhitelabelDomain(this._customerInfo.getLoaded()) != null
+			getWhitelabelDomainInfo(this._customerInfo.getLoaded()) != null
 		)
 	}
 
@@ -315,7 +316,7 @@ export class WhitelabelSettingsViewer implements UpdatableSettingsViewer {
 	async _updateFields(): Promise<void> {
 		await this._planConfig.getAsync()
 		const customerInfo = await this._customerInfo.getAsync()
-		this._whitelabelDomainInfo = getWhitelabelDomain(customerInfo)
+		this._whitelabelDomainInfo = getWhitelabelDomainInfo(customerInfo)
 		const data = await this._tryLoadWhitelabelConfig(this._whitelabelDomainInfo)
 		this._whitelabelConfig = data?.whitelabelConfig ?? null
 		this._certificateInfo = data?.certificateInfo ?? null

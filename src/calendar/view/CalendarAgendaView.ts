@@ -1,13 +1,10 @@
-import m, { Children, Component, Vnode } from "mithril"
-import { incrementDate, lastThrow, neverNull } from "@tutao/tutanota-utils"
+import m, { Child, Children, Component, Vnode, VnodeDOM } from "mithril"
+import { incrementDate, isSameDay, neverNull } from "@tutao/tutanota-utils"
 import { lang } from "../../misc/LanguageViewModel"
-import { formatDate, formatDateWithWeekday } from "../../misc/Formatter"
-import { getEventColor, getStartOfDayWithZone, getTimeZone } from "../date/CalendarUtils"
-import { isAllDayEvent } from "../../api/common/utils/CommonCalendarUtils"
+import { getTimeZone } from "../date/CalendarUtils"
 import type { CalendarEvent } from "../../api/entities/tutanota/TypeRefs.js"
 import type { GroupColors } from "./CalendarView"
 import type { CalendarEventBubbleClickHandler } from "./CalendarViewModel"
-import { getNextFourteenDays } from "./CalendarGuiUtils.js"
 import { styles } from "../../gui/styles.js"
 import { DateTime } from "luxon"
 import { CalendarAgendaItemView } from "./CalendarAgendaItemView.js"
@@ -15,14 +12,25 @@ import ColumnEmptyMessageBox from "../../gui/base/ColumnEmptyMessageBox.js"
 import { BootIcons } from "../../gui/base/icons/BootIcons.js"
 import { theme } from "../../gui/theme.js"
 import { px, size } from "../../gui/size.js"
-import { DaySelector } from "../date/DaySelector.js"
+import { DaySelector } from "../gui/day-selector/DaySelector.js"
+import { CalendarEventPreviewViewModel } from "../gui/eventpopup/CalendarEventPreviewViewModel.js"
+import { EventDetailsView } from "./EventDetailsView.js"
+import { getElementId, getListId } from "../../api/common/utils/EntityUtils.js"
+import { isAllDayEvent } from "../../api/common/utils/CommonCalendarUtils.js"
+import { CalendarTimeIndicator } from "./CalendarTimeIndicator.js"
+import { Time } from "../date/Time.js"
+import { DaysToEvents } from "../date/CalendarEventsRepository.js"
 
-type Attrs = {
+import { formatEventTimes, getEventColor } from "../gui/CalendarGuiUtils.js"
+import { PageView } from "../../gui/base/PageView.js"
+
+export type CalendarAgendaViewAttrs = {
 	selectedDate: Date
+	selectedTime?: Time
 	/**
 	 * maps start of day timestamp to events on that day
 	 */
-	eventsForDays: Map<number, Array<CalendarEvent>>
+	eventsForDays: DaysToEvents
 	amPmFormat: boolean
 	onEventClicked: CalendarEventBubbleClickHandler
 	groupColors: GroupColors
@@ -33,25 +41,61 @@ type Attrs = {
 	onShowDate: (date: Date) => unknown
 	/**  when the selected date was changed  */
 	onDateSelected: (date: Date) => unknown
+	eventPreviewModel: CalendarEventPreviewViewModel | null
 }
 
-export class CalendarAgendaView implements Component<Attrs> {
-	view({ attrs }: Vnode<Attrs>): Children {
+export class CalendarAgendaView implements Component<CalendarAgendaViewAttrs> {
+	private scrollPosition: number = 0
+
+	private lastScrolledDate: Date | null = null
+	private listDom: HTMLElement | null = null
+
+	view({ attrs }: Vnode<CalendarAgendaViewAttrs>): Children {
+		const isDesktopLayout = styles.isDesktopLayout()
 		const selectedDate = attrs.selectedDate
-		return m(".fill-absolute.flex.col.mlr-safe-inset", [
-			this.renderDateSelector(attrs, selectedDate),
-			styles.isDesktopLayout()
-				? m(`.rel.flex-grow.content-bg`, [this.renderAgendaForDateRange(attrs)])
-				: // if the scroll is not on the child but on the nested one it will overflow
-				  m(`.rel.flex-grow.content-bg.scroll.border-radius-top-left-big.border-radius-top-right-big"`, [this.renderAgendaForDay(attrs)]),
+
+		let containerStyle
+
+		if (isDesktopLayout) {
+			containerStyle = {
+				marginLeft: "5px",
+				marginBottom: px(size.hpad_large),
+			}
+		} else {
+			containerStyle = {}
+		}
+
+		const agendaChildren = this.renderAgenda(attrs, isDesktopLayout)
+
+		if (attrs.selectedTime && attrs.eventsForDays.size > 0 && this.lastScrolledDate != attrs.selectedDate) {
+			this.lastScrolledDate = attrs.selectedDate
+			requestAnimationFrame(() => {
+				if (this.listDom) {
+					this.listDom.scrollTop = this.scrollPosition
+				}
+			})
+		}
+
+		return m(".fill-absolute.flex.col", { class: isDesktopLayout ? "mlr-l height-100p" : "mlr-safe-inset", style: containerStyle }, [
+			this.renderDateSelector(attrs, isDesktopLayout, selectedDate),
+			m(
+				".rel.flex-grow.flex.col",
+				{
+					class: isDesktopLayout ? "overflow-hidden" : "content-bg scroll border-radius-top-left-big border-radius-top-right-big",
+					oncreate: (vnode: VnodeDOM) => {
+						if (!isDesktopLayout) this.listDom = vnode.dom as HTMLElement
+					},
+				},
+				agendaChildren,
+			),
 		])
 	}
 
-	private renderDateSelector(attrs: Attrs, selectedDate: Date): Children {
+	private renderDateSelector(attrs: CalendarAgendaViewAttrs, isDesktopLayout: boolean, selectedDate: Date): Children {
 		// This time width is used to create a container above the day slider
 		// So the hidden dates "seems" to be following the same margin of the view
-		const timeWidth = !styles.isDesktopLayout() ? size.calendar_hour_width_mobile : size.calendar_hour_width
-		return styles.isDesktopLayout()
+		const timeWidth = !isDesktopLayout ? size.calendar_hour_width_mobile : size.calendar_hour_width
+		return isDesktopLayout
 			? null
 			: m(
 					".flex.full-width.items-center",
@@ -87,6 +131,7 @@ export class CalendarAgendaView implements Component<Attrs> {
 									showDaySelection: true,
 									highlightToday: true,
 									highlightSelectedWeek: false,
+									useNarrowWeekName: styles.isSingleColumnLayout(),
 								}),
 							),
 						],
@@ -94,8 +139,42 @@ export class CalendarAgendaView implements Component<Attrs> {
 			  )
 	}
 
-	private renderAgendaForDay(attrs: Attrs): Children {
-		const events = (attrs.eventsForDays.get(attrs.selectedDate.getTime()) ?? []).filter((e) => !attrs.hiddenCalendars.has(neverNull(e._ownerGroup)))
+	private renderDesktopEventList(attrs: CalendarAgendaViewAttrs): Children {
+		const events = this.getEventsToRender(attrs.selectedDate, attrs)
+		if (events.length === 0) {
+			return m(ColumnEmptyMessageBox, {
+				icon: BootIcons.Calendar,
+				message: "noEntries_msg",
+				color: theme.list_message_bg,
+			})
+		} else {
+			return m(".flex.mb-s.col", this.renderEventsForDay(events, getTimeZone(), attrs.selectedDate, attrs))
+		}
+	}
+
+	private renderMobileAgendaView(attrs: CalendarAgendaViewAttrs) {
+		const day = attrs.selectedDate
+		const previousDay = incrementDate(new Date(day), -1)
+		const nextDay = incrementDate(new Date(day), 1)
+		return m(PageView, {
+			previousPage: {
+				key: previousDay.getTime(),
+				nodes: this.renderMobileEventList(previousDay, attrs),
+			},
+			currentPage: {
+				key: day.getTime(),
+				nodes: this.renderMobileEventList(day, attrs),
+			},
+			nextPage: {
+				key: nextDay.getTime(),
+				nodes: this.renderMobileEventList(nextDay, attrs),
+			},
+			onChangePage: (next) => attrs.onDateSelected(next ? nextDay : previousDay),
+		})
+	}
+
+	private renderMobileEventList(day: Date, attrs: CalendarAgendaViewAttrs): Children {
+		const events = this.getEventsToRender(day, attrs)
 		if (events.length === 0) {
 			return m(ColumnEmptyMessageBox, {
 				icon: BootIcons.Calendar,
@@ -105,112 +184,122 @@ export class CalendarAgendaView implements Component<Attrs> {
 		} else {
 			return m(
 				".pt-s.flex.mlr.mb-s.col",
-				{ style: { ...(!styles.isDesktopLayout() ? { marginLeft: px(size.calendar_hour_width_mobile) } : {}) } },
-				this.renderEventsForDay(events, attrs.selectedDate, getTimeZone(), attrs.groupColors, attrs.onEventClicked),
+				{ style: { marginLeft: px(size.calendar_hour_width_mobile) } },
+				this.renderEventsForDay(events, getTimeZone(), day, attrs),
 			)
 		}
 	}
 
-	private renderAgendaForDateRange(attrs: Attrs): Children {
-		const now = new Date()
-		const zone = getTimeZone()
-		const today = getStartOfDayWithZone(now, zone)
-		const tomorrow = incrementDate(new Date(today), 1)
-		const days = getNextFourteenDays(today)
-		const lastDay = lastThrow(days)
-
-		const lastDayFormatted = formatDate(lastDay)
-		return m(
-			".scroll.pt-s",
-			days
-				.map((day: Date) => {
-					let events = (attrs.eventsForDays.get(day.getTime()) || []).filter((e) => !attrs.hiddenCalendars.has(neverNull(e._ownerGroup)))
-
-					if (day.getTime() === today.getTime()) {
-						// only show future and currently running events
-						events = events.filter((ev) => isAllDayEvent(ev) || attrs.selectedDate < ev.endTime)
-					} else if (day.getTime() > tomorrow.getTime() && events.length === 0) {
-						return null
-					}
-
-					const dateDescription =
-						day.getTime() === today.getTime()
-							? lang.get("today_label")
-							: day.getTime() === tomorrow.getTime()
-							? lang.get("tomorrow_label")
-							: formatDateWithWeekday(day)
-					return m(
-						".flex.mlr-l.calendar-agenda-row.mb-s.col",
-						{
-							key: day.getTime(),
-						},
-						[
-							m(
-								"button.pb-s.b",
-								{
-									onclick: () => attrs.onShowDate(new Date(day)),
-								},
-								dateDescription,
-							),
-							m(
-								".flex-grow",
-								{
-									style: {
-										"max-width": "600px",
-									},
-								},
-								this.renderEventsForDay(events, day, zone, attrs.groupColors, attrs.onEventClicked),
-							),
-						],
-					)
-				})
-				.filter(Boolean) // mithril doesn't allow mixing keyed elements with null (for perf reasons it seems)
-				.concat(
-					m(
-						".mlr-l",
-						{
-							key: "events_until",
-						},
-						lang.get("showingEventsUntil_msg", {
-							"{untilDay}": lastDayFormatted,
-						}),
-					),
-				),
-		)
+	private getEventsToRender(day: Date, attrs: CalendarAgendaViewAttrs): readonly CalendarEvent[] {
+		return (attrs.eventsForDays.get(day.getTime()) ?? []).filter((e) => !attrs.hiddenCalendars.has(neverNull(e._ownerGroup)))
 	}
 
-	private renderEventsForDay(
-		events: CalendarEvent[],
-		day: Date,
-		zone: string,
-		colors: GroupColors,
-		click: (event: CalendarEvent, domEvent: MouseEvent) => unknown,
-	) {
+	private renderAgenda(attrs: CalendarAgendaViewAttrs, isDesktopLayout: boolean): Children {
+		if (!isDesktopLayout) return this.renderMobileAgendaView(attrs)
+
+		return m(".flex.flex-grow.height-100p", [
+			m(
+				".flex-grow.rel.overflow-y-scroll",
+				{
+					style: {
+						"min-width": px(size.second_col_min_width),
+						"max-width": px(size.second_col_max_width),
+					},
+					oncreate: (vnode: VnodeDOM) => (this.listDom = vnode.dom as HTMLElement),
+				},
+				[this.renderDesktopEventList(attrs)],
+			),
+			m(
+				".ml-l.flex-grow.scroll",
+				{
+					style: {
+						"min-width": px(size.third_col_min_width),
+						"max-width": px(size.third_col_max_width),
+					},
+				},
+				attrs.eventPreviewModel == null
+					? m(
+							".rel.flex-grow.height-100p",
+							m(ColumnEmptyMessageBox, {
+								icon: BootIcons.Calendar,
+								message: () => lang.get("noEventSelect_msg"),
+								color: theme.list_message_bg,
+							}),
+					  )
+					: m(EventDetailsView, {
+							eventPreviewModel: attrs.eventPreviewModel,
+					  }),
+			),
+		])
+	}
+
+	private renderEventsForDay(events: readonly CalendarEvent[], zone: string, day: Date, attrs: CalendarAgendaViewAttrs) {
+		const { groupColors: colors, onEventClicked: click, eventPreviewModel: modelPromise } = attrs
+		const agendaItemHeight = 62
+		const agendaGap = 3
+		const currentTime = attrs.selectedTime?.toDate()
+		let newScrollPosition = 0
+
+		// Find what event to display a time indicator for; do this even if it is not the same day, as we might want to refresh the view when the date rolls over to this day
+		const eventToShowTimeIndicator = earliestEventToShowTimeIndicator(events, new Date())
+		// Flat list structure so that we don't have problems with keys
+		let eventsNodes: Child[] = []
+		for (const [eventIndex, event] of events.entries()) {
+			if (eventToShowTimeIndicator === eventIndex && isSameDay(new Date(), event.startTime)) {
+				eventsNodes.push(m(".mt-xs.mb-xs", { key: "timeIndicator" }, m(CalendarTimeIndicator, { circleLeftTangent: true })))
+			}
+			if (currentTime && event.startTime < currentTime) {
+				newScrollPosition += agendaItemHeight + agendaGap
+			}
+			eventsNodes.push(
+				m(CalendarAgendaItemView, {
+					key: getListId(event) + getElementId(event) + event.startTime.toISOString(),
+					event: event,
+					color: getEventColor(event, colors),
+					selected: event === modelPromise?.calendarEvent,
+					click: (domEvent) => click(event, domEvent),
+					zone,
+					day: day,
+					height: agendaItemHeight,
+					timeText: formatEventTimes(day, event, zone),
+				}),
+			)
+		}
+		// one agenda item height needs to be removed to show the correct item
+		this.scrollPosition = newScrollPosition - (agendaItemHeight + agendaGap)
 		return events.length === 0
 			? m(".mb-s", lang.get("noEntries_msg"))
 			: m(
 					".flex.col",
 					{
 						style: {
-							gap: "3px",
+							gap: px(agendaGap),
 						},
 					},
-					events.map((event) => {
-						return m(
-							"",
-							// this causes mithril to crash on some days, not clear why yet
-							// {
-							// 	key: event._id.toString(),
-							// },
-							m(CalendarAgendaItemView, {
-								event: event,
-								color: getEventColor(event, colors),
-								click: (domEvent) => click(event, domEvent),
-								zone,
-								day: day,
-							}),
-						)
-					}),
+					eventsNodes,
 			  )
 	}
+}
+
+/**
+ * Calculate the next event to occur with a given date; all-day events will be ignored
+ * @param events list of events to check
+ * @param date date to use
+ * @return the index, or null if there is no next event
+ */
+export function earliestEventToShowTimeIndicator(events: readonly CalendarEvent[], date: Date): number | null {
+	// We do not want to show the time indicator above any all day events
+	const firstNonAllDayEvent = events.findIndex((event) => !isAllDayEvent(event))
+	if (firstNonAllDayEvent < 0) {
+		return null
+	}
+
+	// Next, we want to locate the first event where the start time has yet to be reached
+	const nonAllDayEvents = events.slice(firstNonAllDayEvent)
+	const nextEvent = nonAllDayEvents.findIndex((event) => event.startTime > date)
+	if (nextEvent < 0) {
+		return null
+	}
+
+	return nextEvent + firstNonAllDayEvent
 }

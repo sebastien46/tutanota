@@ -1,7 +1,6 @@
 import { MailTypeRef } from "../../entities/tutanota/TypeRefs.js"
 import { DbTransaction } from "./DbFacade"
 import { resolveTypeReference } from "../../common/EntityFunctions"
-import { tokenize } from "./Tokenizer"
 import type { PromiseMapFn } from "@tutao/tutanota-utils"
 import {
 	arrayHash,
@@ -15,6 +14,7 @@ import {
 	neverNull,
 	promiseMap,
 	promiseMapCompat,
+	tokenize,
 	TypeRef,
 	uint8ArrayToBase64,
 } from "@tutao/tutanota-utils"
@@ -641,7 +641,10 @@ export class SearchFacade {
 								// mark result index id as processed to not query result in next load more operation
 								entriesCopy[index] = null
 
-								if (elementData && (!searchResult.restriction.listId || searchResult.restriction.listId === elementData[0])) {
+								if (
+									elementData &&
+									(!(searchResult.restriction.listIds.length > 0) || searchResult.restriction.listIds.includes(elementData[0]))
+								) {
 									return [elementData[0], entry.id] as IdTuple
 								}
 

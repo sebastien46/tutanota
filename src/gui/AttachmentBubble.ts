@@ -3,7 +3,7 @@ import { Attachment } from "../mail/editor/SendMailModel.js"
 import { Button, ButtonType } from "./base/Button.js"
 import { Icons } from "./base/icons/Icons.js"
 import { formatStorageSize } from "../misc/Formatter.js"
-import { defer, DeferredObject, NBSP, noOp, Thunk } from "@tutao/tutanota-utils"
+import { defer, DeferredObject, noOp, Thunk } from "@tutao/tutanota-utils"
 import { modal, ModalComponent } from "./base/Modal.js"
 import { focusNext, focusPrevious, Shortcut } from "../misc/KeyManager.js"
 import { PosRect } from "./base/Dropdown.js"
@@ -15,7 +15,7 @@ import { animations, height, opacity, transform, TransformEnum, width } from "./
 import { ease } from "./animation/Easing.js"
 import { getFileBaseName, getFileExtension, isTutanotaFile } from "../api/common/utils/FileUtils.js"
 import { getSafeAreaInsetBottom } from "./HtmlUtils.js"
-import { hasError } from "../api/common/utils/ErrorCheckUtils.js"
+import { hasError } from "../api/common/utils/ErrorUtils.js"
 
 export type AttachmentBubbleAttrs = {
 	attachment: Attachment

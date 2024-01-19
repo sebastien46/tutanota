@@ -1,5 +1,5 @@
 import type { InvoiceData, PaymentData, SpamRuleFieldType, SpamRuleType } from "../../../common/TutanotaConstants.js"
-import { AccountType, BookingItemFeatureType, Const, CounterType, GroupType, KdfType } from "../../../common/TutanotaConstants.js"
+import { AccountType, BookingItemFeatureType, Const, CounterType, CryptoProtocolVersion, GroupType } from "../../../common/TutanotaConstants.js"
 import type {
 	AccountingInfo,
 	CustomDomainReturn,
@@ -25,7 +25,6 @@ import {
 import { assertWorkerOrNode } from "../../../common/Env.js"
 import type { Hex } from "@tutao/tutanota-utils"
 import { assertNotNull, neverNull, noOp, ofClass, stringToUtf8Uint8Array, uint8ArrayToBase64, uint8ArrayToHex } from "@tutao/tutanota-utils"
-import { getWhitelabelDomain } from "../../../common/utils/Utils.js"
 import { CryptoFacade } from "../../crypto/CryptoFacade.js"
 import {
 	BrandingDomainService,
@@ -36,7 +35,6 @@ import {
 	PdfInvoiceService,
 	SystemKeysService,
 } from "../../../entities/sys/Services.js"
-import type { InternalGroupData } from "../../../entities/tutanota/TypeRefs.js"
 import { createCustomerAccountCreateData } from "../../../entities/tutanota/TypeRefs.js"
 import type { UserManagementFacade } from "./UserManagementFacade.js"
 import type { GroupManagementFacade } from "./GroupManagementFacade.js"
@@ -45,7 +43,7 @@ import type { Country } from "../../../common/CountryList.js"
 import { getByAbbreviation } from "../../../common/CountryList.js"
 import { LockedError } from "../../../common/error/RestError.js"
 import type { RsaKeyPair } from "@tutao/tutanota-crypto"
-import { aes128RandomKey, bitArrayToUint8Array, encryptKey, hexToPublicKey, sha256Hash, uint8ArrayToBitArray } from "@tutao/tutanota-crypto"
+import { aes256RandomKey, bitArrayToUint8Array, encryptKey, hexToRsaPublicKey, sha256Hash, uint8ArrayToBitArray } from "@tutao/tutanota-crypto"
 import type { RsaImplementation } from "../../crypto/RsaImplementation.js"
 import { EntityClient } from "../../../common/EntityClient.js"
 import { DataFile } from "../../../common/DataFile.js"
@@ -56,6 +54,9 @@ import { UserFacade } from "../UserFacade.js"
 import { PaymentInterval } from "../../../../subscription/PriceUtils.js"
 import { ExposedOperationProgressTracker, OperationId } from "../../../main/OperationProgressTracker.js"
 import { formatNameAndAddress } from "../../../common/utils/CommonFormatter.js"
+import { PQFacade } from "../PQFacade.js"
+import { ProgrammingError } from "../../../common/error/ProgrammingError.js"
+import { getWhitelabelDomainInfo } from "../../../common/utils/CustomerUtils.js"
 
 assertWorkerOrNode()
 
@@ -71,6 +72,7 @@ export class CustomerFacade {
 		private readonly bookingFacade: BookingFacade,
 		private readonly cryptoFacade: CryptoFacade,
 		private readonly operationProgressTracker: ExposedOperationProgressTracker,
+		private readonly pq: PQFacade,
 	) {}
 
 	async getDomainValidationRecord(domainName: string): Promise<string> {
@@ -83,6 +85,7 @@ export class CustomerFacade {
 	addDomain(domainName: string): Promise<CustomDomainReturn> {
 		const data = createCustomDomainData({
 			domain: domainName.trim().toLowerCase(),
+			catchAllMailGroup: null,
 		})
 		return this.serviceExecutor.post(CustomDomainService, data)
 	}
@@ -90,6 +93,7 @@ export class CustomerFacade {
 	async removeDomain(domainName: string): Promise<void> {
 		const data = createCustomDomainData({
 			domain: domainName.trim().toLowerCase(),
+			catchAllMailGroup: null,
 		})
 		await this.serviceExecutor.delete(CustomDomainService, data)
 	}
@@ -106,15 +110,26 @@ export class CustomerFacade {
 		const customerId = this.getCustomerId()
 		const customer = await this.entityClient.load(CustomerTypeRef, customerId)
 		const customerInfo = await this.entityClient.load(CustomerInfoTypeRef, customer.customerInfo)
-		let existingBrandingDomain = getWhitelabelDomain(customerInfo, domainName)
+		let existingBrandingDomain = getWhitelabelDomainInfo(customerInfo, domainName)
+		let sessionKey = aes256RandomKey()
+
 		const keyData = await this.serviceExecutor.get(SystemKeysService, null)
-		let systemAdminPubKey = hexToPublicKey(uint8ArrayToHex(keyData.systemAdminPubKey))
-		let sessionKey = aes128RandomKey()
-		const systemAdminPubEncAccountingInfoSessionKey = await this.rsa.encrypt(systemAdminPubKey, bitArrayToUint8Array(sessionKey))
+		const pubRsaKey = keyData.systemAdminPubRsaKey
+		const pubEccKey = keyData.systemAdminPubEccKey
+		const pubKyberKey = keyData.systemAdminPubKyberKey
+		const systemAdminPubKeys = { pubEccKey, pubKyberKey, pubRsaKey }
+		const { pubEncSymKey, cryptoProtocolVersion } = await this.cryptoFacade.encryptPubSymKey(
+			sessionKey,
+			systemAdminPubKeys,
+			this.userFacade.getUserGroupId(),
+		)
 
 		const data = createBrandingDomainData({
 			domain: domainName,
-			systemAdminPubEncSessionKey: systemAdminPubEncAccountingInfoSessionKey,
+			systemAdminPubEncSessionKey: pubEncSymKey,
+			systemAdminPublicProtocolVersion: cryptoProtocolVersion,
+			sessionEncPemPrivateKey: null,
+			sessionEncPemCertificateChain: null,
 		})
 		if (existingBrandingDomain) {
 			await this.serviceExecutor.put(BrandingDomainService, data)
@@ -180,7 +195,7 @@ export class CustomerFacade {
 			cspId = customer.serverProperties
 		} else {
 			// create properties
-			const sessionKey = aes128RandomKey()
+			const sessionKey = aes256RandomKey()
 			const adminGroupKey = this.userFacade.getGroupKey(this.userFacade.getGroupId(GroupType.Admin))
 
 			const groupEncSessionKey = encryptKey(adminGroupKey, sessionKey)
@@ -239,19 +254,32 @@ export class CustomerFacade {
 		password: string,
 		registrationCode: string,
 		currentLanguage: string,
-		kdfType: KdfType,
 	): Promise<Hex> {
+		const userGroupKey = aes256RandomKey()
+		const adminGroupKey = aes256RandomKey()
+		const customerGroupKey = aes256RandomKey()
+		const userGroupInfoSessionKey = aes256RandomKey()
+		const adminGroupInfoSessionKey = aes256RandomKey()
+		const customerGroupInfoSessionKey = aes256RandomKey()
+		const accountingInfoSessionKey = aes256RandomKey()
+		const customerServerPropertiesSessionKey = aes256RandomKey()
+
 		const keyData = await this.serviceExecutor.get(SystemKeysService, null)
-		const systemAdminPubKey = hexToPublicKey(uint8ArrayToHex(keyData.systemAdminPubKey))
-		const userGroupKey = aes128RandomKey()
-		const adminGroupKey = aes128RandomKey()
-		const customerGroupKey = aes128RandomKey()
-		const userGroupInfoSessionKey = aes128RandomKey()
-		const adminGroupInfoSessionKey = aes128RandomKey()
-		const customerGroupInfoSessionKey = aes128RandomKey()
-		const accountingInfoSessionKey = aes128RandomKey()
-		const customerServerPropertiesSessionKey = aes128RandomKey()
-		const systemAdminPubEncAccountingInfoSessionKey = await this.rsa.encrypt(systemAdminPubKey, bitArrayToUint8Array(accountingInfoSessionKey))
+		const pubRsaKey = keyData.systemAdminPubRsaKey
+		const pubEccKey = keyData.systemAdminPubEccKey
+		const pubKyberKey = keyData.systemAdminPubKyberKey
+		let systemAdminPubEncAccountingInfoSessionKey
+		let systemAdminPublicProtocolVersion
+
+		if (pubRsaKey) {
+			const rsaPublicKey = hexToRsaPublicKey(uint8ArrayToHex(pubRsaKey))
+			systemAdminPubEncAccountingInfoSessionKey = await this.rsa.encrypt(rsaPublicKey, bitArrayToUint8Array(accountingInfoSessionKey))
+			systemAdminPublicProtocolVersion = CryptoProtocolVersion.RSA
+		} else {
+			// we need to release tuta-crypt by default first before we can encrypt keys for the system admin with PQ public keys.
+			throw new ProgrammingError("system admin having pq key pair is not supported")
+		}
+
 		const userGroupData = this.groupManagement.generateInternalGroupData(
 			keyPairs[0],
 			userGroupKey,
@@ -294,7 +322,6 @@ export class CustomerFacade {
 				password,
 				"",
 				recoverData,
-				kdfType,
 			),
 			userEncAdminGroupKey: encryptKey(userGroupKey, adminGroupKey),
 			userGroupData,
@@ -302,7 +329,9 @@ export class CustomerFacade {
 			customerGroupData,
 			adminEncAccountingInfoSessionKey: encryptKey(adminGroupKey, accountingInfoSessionKey),
 			systemAdminPubEncAccountingInfoSessionKey,
+			systemAdminPublicProtocolVersion,
 			adminEncCustomerServerPropertiesSessionKey: encryptKey(adminGroupKey, customerServerPropertiesSessionKey),
+			userEncAccountGroupKey: new Uint8Array(0),
 		})
 		await this.serviceExecutor.post(CustomerAccountService, data)
 		return recoverData.hexCode
@@ -360,19 +389,18 @@ export class CustomerFacade {
 		let customerInfo = await this.entityClient.load(CustomerInfoTypeRef, customer.customerInfo)
 		let accountingInfo = await this.entityClient.load(AccountingInfoTypeRef, customerInfo.accountingInfo)
 		let accountingInfoSessionKey = await this.cryptoFacade.resolveSessionKeyForInstance(accountingInfo)
-		const service = createPaymentDataServicePutData()
-		service.paymentInterval = paymentInterval.toString()
-		service.invoiceName = ""
-		service.invoiceAddress = invoiceData.invoiceAddress
-		service.invoiceCountry = invoiceData.country ? invoiceData.country.a : ""
-		service.invoiceVatIdNo = invoiceData.vatNumber ? invoiceData.vatNumber : ""
-		service.paymentMethod = paymentData ? paymentData.paymentMethod : accountingInfo.paymentMethod ? accountingInfo.paymentMethod : ""
-		service.paymentMethodInfo = null
-		service.paymentToken = null
-		if (paymentData && paymentData.creditCardData) {
-			service.creditCard = paymentData.creditCardData
-		}
-		service.confirmedCountry = confirmedInvoiceCountry ? confirmedInvoiceCountry.a : null
+		const service = createPaymentDataServicePutData({
+			paymentInterval: paymentInterval.toString(),
+			invoiceName: "",
+			invoiceAddress: invoiceData.invoiceAddress,
+			invoiceCountry: invoiceData.country ? invoiceData.country.a : "",
+			invoiceVatIdNo: invoiceData.vatNumber ? invoiceData.vatNumber : "",
+			paymentMethod: paymentData ? paymentData.paymentMethod : accountingInfo.paymentMethod ? accountingInfo.paymentMethod : "",
+			paymentMethodInfo: null,
+			paymentToken: null,
+			creditCard: paymentData && paymentData.creditCardData ? paymentData.creditCardData : null,
+			confirmedCountry: confirmedInvoiceCountry ? confirmedInvoiceCountry.a : null,
+		})
 		return this.serviceExecutor.put(PaymentDataService, service, { sessionKey: accountingInfoSessionKey ?? undefined })
 	}
 
@@ -399,6 +427,7 @@ export class CustomerFacade {
 	async downloadInvoice(invoiceNumber: string): Promise<DataFile> {
 		const data = createPdfInvoiceServiceData({
 			invoiceNumber,
+			invoice: null,
 		})
 		return this.serviceExecutor.get(PdfInvoiceService, data).then((returnData) => {
 			return {

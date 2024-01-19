@@ -253,11 +253,14 @@ async function cancelSubscription(dialog: Dialog, currentPlanInfo: CurrentPlanIn
 	if (!(await Dialog.confirm("unsubscribeConfirm_msg"))) {
 		return
 	}
-	const switchAccountTypeData = createSwitchAccountTypePostIn()
-	switchAccountTypeData.accountType = AccountType.FREE
-	switchAccountTypeData.date = Const.CURRENT_DATE
-	switchAccountTypeData.customer = customer._id
-	switchAccountTypeData.specialPriceUserSingle = null
+	const switchAccountTypeData = createSwitchAccountTypePostIn({
+		accountType: AccountType.FREE,
+		date: Const.CURRENT_DATE,
+		customer: customer._id,
+		specialPriceUserSingle: null,
+		referralCode: null,
+		plan: PlanType.Free,
+	})
 	try {
 		await showProgressDialog(
 			"pleaseWait_msg",
@@ -289,13 +292,14 @@ async function switchSubscription(targetSubscription: PlanType, dialog: Dialog, 
 	}
 
 	try {
-		const postIn = createSwitchAccountTypePostIn()
-		postIn.accountType = AccountType.PAID
-		postIn.plan = targetSubscription
-		postIn.date = Const.CURRENT_DATE
-		postIn.referralCode = null
-		postIn.customer = customer._id
-		postIn.specialPriceUserSingle = null
+		const postIn = createSwitchAccountTypePostIn({
+			accountType: AccountType.PAID,
+			plan: targetSubscription,
+			date: Const.CURRENT_DATE,
+			referralCode: null,
+			customer: customer._id,
+			specialPriceUserSingle: null,
+		})
 
 		try {
 			await showProgressDialog("pleaseWait_msg", locator.serviceExecutor.post(SwitchAccountTypeService, postIn))

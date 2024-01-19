@@ -18,7 +18,7 @@ Keywords=Email;E-mail
 Exec="/appimage/path/file.appImage" %U
 Terminal=false
 Type=Application
-Icon=appName.png
+Icon=appName
 StartupWMClass=appName
 MimeType=x-scheme-handler/mailto;
 Categories=Network;
@@ -546,7 +546,7 @@ o.spec("DesktopIntegrator Test", () => {
 		})
 	})
 
-	o.spec("Windows", async function () {
+	o.spec("Windows", function () {
 		o.beforeEach(function () {
 			n.setPlatform("win32")
 		})

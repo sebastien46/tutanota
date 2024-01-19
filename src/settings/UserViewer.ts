@@ -13,8 +13,7 @@ import { getGroupTypeDisplayName } from "./groups/GroupDetailsView.js"
 import { Icons } from "../gui/base/icons/Icons"
 import { SecondFactorsEditForm } from "./login/secondfactor/SecondFactorsEditForm.js"
 import { showProgressDialog } from "../gui/dialogs/ProgressDialog"
-import type { EntityUpdateData } from "../api/main/EventController"
-import { isUpdateForTypeRef } from "../api/main/EventController"
+
 import { HtmlEditor as Editor, HtmlEditorMode } from "../gui/editor/HtmlEditor"
 import { checkAndImportUserData, CSV_USER_FORMAT } from "./ImportUsersViewer"
 import { MailAddressTable } from "./mailaddress/MailAddressTable.js"
@@ -31,6 +30,7 @@ import { ButtonSize } from "../gui/base/ButtonSize.js"
 import { MailAddressTableModel } from "./mailaddress/MailAddressTableModel.js"
 import { progressIcon } from "../gui/base/Icon.js"
 import { toFeatureType } from "../subscription/SubscriptionUtils.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
 

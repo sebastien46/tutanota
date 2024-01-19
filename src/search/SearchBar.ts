@@ -4,33 +4,34 @@ import stream from "mithril/stream"
 import Stream from "mithril/stream"
 import type { PositionRect } from "../gui/base/Overlay"
 import { displayOverlay } from "../gui/base/Overlay"
-import type { Contact, Mail } from "../api/entities/tutanota/TypeRefs.js"
-import { ContactTypeRef, MailTypeRef } from "../api/entities/tutanota/TypeRefs.js"
+import type { CalendarEvent, Contact, Mail } from "../api/entities/tutanota/TypeRefs.js"
+import { CalendarEventTypeRef, ContactTypeRef, MailTypeRef } from "../api/entities/tutanota/TypeRefs.js"
 import type { Shortcut } from "../misc/KeyManager"
 import { isKeyPressed, keyManager } from "../misc/KeyManager"
-import { NotAuthorizedError, NotFoundError } from "../api/common/error/RestError"
-import { getRestriction } from "./model/SearchUtils"
+import { encodeCalendarSearchKey, getRestriction } from "./model/SearchUtils"
 import { locator } from "../api/main/MainLocator"
 import { Dialog } from "../gui/base/Dialog"
 import type { WhitelabelChild } from "../api/entities/sys/TypeRefs.js"
-import { GroupInfoTypeRef, WhitelabelChildTypeRef } from "../api/entities/sys/TypeRefs.js"
 import { FULL_INDEXED_TIMESTAMP, Keys } from "../api/common/TutanotaConstants"
 import { assertMainOrNode, isApp } from "../api/common/Env"
 import { styles } from "../gui/styles"
 import { client } from "../misc/ClientDetector"
-import { debounce, downcast, groupBy, isSameTypeRef, memoized, mod, ofClass, promiseMap, TypeRef } from "@tutao/tutanota-utils"
+import { debounce, debounceStart, downcast, isSameTypeRef, memoized, mod, ofClass, TypeRef } from "@tutao/tutanota-utils"
 import { BrowserType } from "../misc/ClientConstants"
 import { hasMoreResults } from "./model/SearchModel"
 import { SearchBarOverlay } from "./SearchBarOverlay"
 import { IndexingNotSupportedError } from "../api/common/error/IndexingNotSupportedError"
 import type { SearchIndexStateInfo, SearchRestriction, SearchResult } from "../api/worker/search/SearchTypes"
-import type { ListElement } from "../api/common/utils/EntityUtils"
-import { elementIdPart, getElementId, listIdPart } from "../api/common/utils/EntityUtils"
+import { assertIsEntity, getElementId } from "../api/common/utils/EntityUtils"
 import { compareContacts } from "../contacts/view/ContactGuiUtils"
 import { LayerType } from "../RootView"
 import { BaseSearchBar, BaseSearchBarAttrs } from "../gui/base/BaseSearchBar.js"
 import { SearchRouter } from "./view/SearchRouter.js"
 import { PageSize } from "../gui/base/ListUtils.js"
+import { generateCalendarInstancesInRange } from "../calendar/date/CalendarUtils.js"
+import { ListElementEntity } from "../api/common/EntityTypes.js"
+
+import { loadMultipleFromLists } from "../api/common/EntityClient.js"
 
 assertMainOrNode()
 export type ShowMoreAction = {
@@ -45,7 +46,7 @@ export type SearchBarAttrs = {
 }
 
 const MAX_SEARCH_PREVIEW_RESULTS = 10
-export type Entry = Mail | Contact | WhitelabelChild | ShowMoreAction
+export type Entry = Mail | Contact | CalendarEvent | WhitelabelChild | ShowMoreAction
 type Entries = Array<Entry>
 export type SearchBarState = {
 	query: string
@@ -98,6 +99,10 @@ export class SearchBar implements Component<SearchBarAttrs> {
 		this.onremove = this.onremove.bind(this)
 	}
 
+	/**
+	 * this reacts to URL changes by clearing the suggestions - the selected item may have changed (in the mail view maybe)
+	 * that shouldn't clear our current state, but if the URL changed in a way that makes the previous state outdated, we clear it.
+	 */
 	private readonly onPathChange = memoized((newPath: string) => {
 		if (locator.search.isNewSearch(this.state().query, getRestriction(newPath))) {
 			this.updateState({
@@ -114,7 +119,7 @@ export class SearchBar implements Component<SearchBarAttrs> {
 			placeholder: vnode.attrs.placeholder,
 			text: this.state().query,
 			busy: this.busy,
-			onInput: (text) => this.search(text),
+			onInput: debounceStart(300, (text) => this.search(text)),
 			onSearchClick: () => this.handleSearchClick(),
 			onClear: () => {
 				this.clear()
@@ -213,8 +218,8 @@ export class SearchBar implements Component<SearchBarAttrs> {
 			})
 		})
 
-		this.stateStream = this.state.map(() => m.redraw())
-		this.lastQueryStream = locator.search.lastQuery.map((value) => {
+		this.stateStream = this.state.map((state) => m.redraw())
+		this.lastQueryStream = locator.search.lastQueryString.map((value) => {
 			// Set value from the model when it's set from the URL e.g. reloading the page on the search screen
 			if (value) {
 				this.updateState({
@@ -312,38 +317,7 @@ export class SearchBar implements Component<SearchBarAttrs> {
 		},
 	]
 
-	private downloadResults({ results, restriction }: SearchResult): Promise<Array<Entry>> {
-		if (results.length === 0) {
-			return Promise.resolve([])
-		}
-
-		const byList = groupBy(results, listIdPart)
-		return promiseMap(
-			byList,
-			([listId, idTuples]) => {
-				return locator.entityClient
-					.loadMultiple(restriction.type, listId, idTuples.map(elementIdPart))
-					.catch(
-						ofClass(NotFoundError, () => {
-							console.log("mail list from search index not found")
-							return []
-						}),
-					)
-					.catch(
-						ofClass(NotAuthorizedError, () => {
-							console.log("no permission on instance from search index")
-							return []
-						}),
-					)
-			},
-			{
-				concurrency: 3,
-			},
-		) // Higher concurrency to not wait too long for search results of multiple lists
-			.then((a) => a.flat())
-	}
-
-	private selectResult(result: (Mail | null) | Contact | WhitelabelChild | ShowMoreAction) {
+	private selectResult(result: (Mail | null) | Contact | WhitelabelChild | CalendarEvent | ShowMoreAction) {
 		const { query } = this.state()
 
 		if (result != null) {
@@ -358,8 +332,8 @@ export class SearchBar implements Component<SearchBarAttrs> {
 				this.updateSearchUrl(query, downcast(result))
 			} else if (isSameTypeRef(ContactTypeRef, type)) {
 				this.updateSearchUrl(query, downcast(result))
-			} else if (isSameTypeRef(WhitelabelChildTypeRef, type)) {
-				this.lastSelectedWhitelabelChildrenInfoResult(downcast(result))
+			} else if (isSameTypeRef(CalendarEventTypeRef, type)) {
+				this.updateSearchUrl(query, downcast(result))
 			}
 		}
 	}
@@ -376,8 +350,12 @@ export class SearchBar implements Component<SearchBarAttrs> {
 		return getRestriction(m.route.get())
 	}
 
-	private updateSearchUrl(query: string, selected?: ListElement) {
-		searchRouter.routeTo(query, this.getRestriction(), selected && getElementId(selected))
+	private updateSearchUrl(query: string, selected?: ListElementEntity) {
+		if (selected && assertIsEntity(selected, CalendarEventTypeRef)) {
+			searchRouter.routeTo(query, this.getRestriction(), selected && encodeCalendarSearchKey(selected))
+		} else {
+			searchRouter.routeTo(query, this.getRestriction(), selected && getElementId(selected))
+		}
 	}
 
 	private search(query?: string) {
@@ -392,10 +370,6 @@ export class SearchBar implements Component<SearchBarAttrs> {
 		}
 
 		let restriction = this.getRestriction()
-
-		if (isSameTypeRef(restriction.type, GroupInfoTypeRef)) {
-			restriction.listId = locator.search.getGroupInfoRestrictionListId()
-		}
 
 		if (!locator.search.indexState().mailIndexEnabled && restriction && isSameTypeRef(restriction.type, MailTypeRef) && !this.confirmDialogShown) {
 			this.focused = false
@@ -440,16 +414,27 @@ export class SearchBar implements Component<SearchBarAttrs> {
 	}
 
 	private readonly doSearch = debounce(300, (query: string, restriction: SearchRestriction, cb: () => void) => {
+		if (!this.isQuickSearch()) {
+			// if we're already on the search view, we don't want to wait until there's a new result to update the
+			// UI. we can directly go to the URL and let the SearchViewModel do its thing from there.
+			searchRouter.routeTo(query, restriction)
+			return cb()
+		}
+
 		let useSuggestions = m.route.get().startsWith("/settings")
 		// We don't limit contacts because we need to download all of them to sort them. They should be cached anyway.
 		const limit = isSameTypeRef(MailTypeRef, restriction.type) ? (this.isQuickSearch() ? MAX_SEARCH_PREVIEW_RESULTS : PageSize) : null
+
 		locator.search
-			.search({
-				query: query ?? "",
-				restriction,
-				minSuggestionCount: useSuggestions ? 10 : 0,
-				maxResults: limit,
-			})
+			.search(
+				{
+					query: query ?? "",
+					restriction,
+					minSuggestionCount: useSuggestions ? 10 : 0,
+					maxResults: limit,
+				},
+				locator.progressTracker,
+			)
 			.then((result) => this.loadAndDisplayResult(query, result ? result : null, limit))
 			.finally(() => cb())
 	})
@@ -486,68 +471,70 @@ export class SearchBar implements Component<SearchBarAttrs> {
 	}
 
 	private clear() {
+		if (m.route.get().startsWith("/search")) {
+			// this needs to happen in this order, otherwise the list's result subscription will override our
+			// routing.
+			this.updateSearchUrl("")
+			locator.search.result(null)
+		}
+
 		this.updateState({
 			query: "",
 			entities: [],
 			selected: null,
 			searchResult: null,
 		})
-
-		locator.search.lastQuery("")
-
-		if (m.route.get().startsWith("/search")) {
-			locator.search.result(null)
-
-			this.updateSearchUrl("")
-		}
 	}
 
-	private showResultsInOverlay(result: SearchResult): Promise<void> {
-		return this.downloadResults(result).then((entries) => {
-			// If there was no new search while we've been downloading the result
-			if (!locator.search.isNewSearch(result.query, result.restriction)) {
-				const filteredResults = this.filterResults(entries, result.restriction)
+	private async showResultsInOverlay(result: SearchResult): Promise<void> {
+		const entries = await loadMultipleFromLists(result.restriction.type, locator.entityClient, result.results)
+		// If there was no new search while we've been downloading the result
+		if (!locator.search.isNewSearch(result.query, result.restriction)) {
+			const { filteredEntries, couldShowMore } = this.filterResults(entries, result.restriction)
 
-				const overlayEntries = filteredResults.slice(0, MAX_SEARCH_PREVIEW_RESULTS)
-
-				if (
-					result.query.trim() !== "" &&
-					(overlayEntries.length === 0 ||
-						hasMoreResults(result) ||
-						overlayEntries.length < filteredResults.length ||
-						result.currentIndexTimestamp !== FULL_INDEXED_TIMESTAMP)
-				) {
-					const moreEntry: ShowMoreAction = {
-						resultCount: result.results.length,
-						shownCount: overlayEntries.length,
-						indexTimestamp: result.currentIndexTimestamp,
-						allowShowMore:
-							!isSameTypeRef(result.restriction.type, GroupInfoTypeRef) && !isSameTypeRef(result.restriction.type, WhitelabelChildTypeRef),
-					}
-					overlayEntries.push(moreEntry)
+			if (
+				result.query.trim() !== "" &&
+				(filteredEntries.length === 0 || hasMoreResults(result) || couldShowMore || result.currentIndexTimestamp !== FULL_INDEXED_TIMESTAMP)
+			) {
+				const moreEntry: ShowMoreAction = {
+					resultCount: result.results.length,
+					shownCount: filteredEntries.length,
+					indexTimestamp: result.currentIndexTimestamp,
+					allowShowMore: true,
 				}
-
-				this.updateState({
-					entities: overlayEntries,
-					selected: overlayEntries[0],
-				})
+				filteredEntries.push(moreEntry)
 			}
-		})
+
+			this.updateState({
+				entities: filteredEntries,
+				selected: filteredEntries[0],
+			})
+		}
 	}
 
 	private isQuickSearch(): boolean {
 		return !m.route.get().startsWith("/search")
 	}
 
-	private filterResults(instances: ReadonlyArray<Entry>, restriction: SearchRestriction): Entries {
-		let filteredInstances = instances.slice()
-
+	private filterResults(instances: Array<Entry>, restriction: SearchRestriction): { filteredEntries: Entries; couldShowMore: boolean } {
 		if (isSameTypeRef(restriction.type, ContactTypeRef)) {
 			// Sort contacts by name
-			filteredInstances.sort((o1, o2) => compareContacts(o1 as any, o2 as any))
+			return {
+				filteredEntries: instances
+					.slice() // we can't modify the given array
+					.sort((o1, o2) => compareContacts(o1 as any, o2 as any))
+					.slice(0, MAX_SEARCH_PREVIEW_RESULTS),
+				couldShowMore: instances.length > MAX_SEARCH_PREVIEW_RESULTS,
+			}
+		} else if (isSameTypeRef(restriction.type, CalendarEventTypeRef)) {
+			const range = { start: restriction.start ?? 0, end: restriction.end ?? 0 }
+			const generatedInstances = generateCalendarInstancesInRange(downcast(instances), range, MAX_SEARCH_PREVIEW_RESULTS + 1)
+			return {
+				filteredEntries: generatedInstances.slice(0, MAX_SEARCH_PREVIEW_RESULTS),
+				couldShowMore: generatedInstances.length > MAX_SEARCH_PREVIEW_RESULTS,
+			}
 		}
-
-		return filteredInstances
+		return { filteredEntries: instances.slice(0, MAX_SEARCH_PREVIEW_RESULTS), couldShowMore: instances.length > MAX_SEARCH_PREVIEW_RESULTS }
 	}
 
 	private onFocus() {
@@ -572,7 +559,6 @@ export class SearchBar implements Component<SearchBarAttrs> {
 
 		if (this.state().query === "") {
 			if (m.route.get().startsWith("/search")) {
-				locator.search.result(null)
 				const restriction = searchRouter.getRestriction()
 				searchRouter.routeTo("", restriction)
 			}

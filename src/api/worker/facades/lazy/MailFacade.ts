@@ -14,14 +14,15 @@ import type { ConversationType } from "../../../common/TutanotaConstants.js"
 import {
 	ArchiveDataType,
 	CounterType,
+	DEFAULT_KDF_TYPE,
 	GroupType,
-	KdfType,
-	MailAuthenticationStatus as MailAuthStatus,
+	MailAuthenticationStatus,
 	MailMethod,
 	MailReportType,
 	OperationType,
 	PhishingMarkerStatus,
 	ReportedMailFieldType,
+	SYSTEM_GROUP_MAIL_ADDRESS,
 } from "../../../common/TutanotaConstants.js"
 import type {
 	Contact,
@@ -29,10 +30,12 @@ import type {
 	DraftRecipient,
 	EncryptedMailAddress,
 	File as TutanotaFile,
+	InternalRecipientKeyData,
 	Mail,
 	MailFolder,
 	ReportedMailFieldMarker,
 	SendDraftData,
+	SymEncInternalRecipientKeyData,
 } from "../../../entities/tutanota/TypeRefs.js"
 import {
 	createAttachmentKeyData,
@@ -55,18 +58,20 @@ import {
 	createSendDraftData,
 	createUpdateMailFolderData,
 	FileTypeRef,
+	InternalRecipientKeyDataTypeRef,
 	MailDetails,
 	MailDetailsBlobTypeRef,
 	MailDetailsDraftTypeRef,
 	MailTypeRef,
+	SymEncInternalRecipientKeyDataTypeRef,
 	TutanotaPropertiesTypeRef,
 } from "../../../entities/tutanota/TypeRefs.js"
 import { RecipientsNotFoundError } from "../../../common/error/RecipientsNotFoundError.js"
 import { NotFoundError } from "../../../common/error/RestError.js"
-import type { EntityUpdate, PublicKeyReturn, User } from "../../../entities/sys/TypeRefs.js"
+import type { EntityUpdate, PublicKeyGetOut, User } from "../../../entities/sys/TypeRefs.js"
 import {
 	BlobReferenceTokenWrapper,
-	createPublicKeyData,
+	createPublicKeyGetIn,
 	ExternalUserReferenceTypeRef,
 	GroupInfoTypeRef,
 	GroupRootTypeRef,
@@ -80,8 +85,8 @@ import {
 	contains,
 	defer,
 	isNotNull,
+	isSameTypeRef,
 	isSameTypeRefByAttr,
-	lazyMemoized,
 	noOp,
 	ofClass,
 	promiseFilter,
@@ -96,7 +101,7 @@ import { htmlToText } from "../../search/IndexUtils.js"
 import { MailBodyTooLargeError } from "../../../common/error/MailBodyTooLargeError.js"
 import { UNCOMPRESSED_MAX_SIZE } from "../../Compression.js"
 import {
-	aes128RandomKey,
+	aes256RandomKey,
 	bitArrayToUint8Array,
 	createAuthVerifier,
 	decryptKey,
@@ -120,6 +125,7 @@ import { isDetailsDraft, isLegacyMail } from "../../../common/MailWrapper.js"
 import { LoginFacade } from "../LoginFacade.js"
 import { ProgrammingError } from "../../../common/error/ProgrammingError.js"
 import { OwnerEncSessionKeyProvider } from "../../rest/EntityRestClient.js"
+import { resolveTypeReference } from "../../../common/EntityFunctions.js"
 
 assertWorkerOrNode()
 type Attachments = ReadonlyArray<TutanotaFile | DataFile | FileReference>
@@ -171,7 +177,7 @@ export class MailFacade {
 	async createMailFolder(name: string, parent: IdTuple | null, ownerGroupId: Id): Promise<void> {
 		const mailGroupKey = this.userFacade.getGroupKey(ownerGroupId)
 
-		const sk = aes128RandomKey()
+		const sk = aes256RandomKey()
 		const newFolder = createCreateMailFolderData({
 			folderName: name,
 			parentFolder: parent,
@@ -242,25 +248,27 @@ export class MailFacade {
 
 		const mailGroupKey = this.userFacade.getGroupKey(senderMailGroupId)
 
-		const sk = aes128RandomKey()
-		const service = createDraftCreateData()
-		service.previousMessageId = previousMessageId
-		service.conversationType = conversationType
-		service.ownerEncSessionKey = encryptKey(mailGroupKey, sk)
-		service.symEncSessionKey = encryptKey(userGroupKey, sk) // legacy
-
-		service.draftData = createDraftData({
-			subject,
-			compressedBodyText: bodyText,
-			senderMailAddress,
-			senderName,
-			confidential,
-			method,
-			toRecipients: toRecipients.map(recipientToDraftRecipient),
-			ccRecipients: ccRecipients.map(recipientToDraftRecipient),
-			bccRecipients: bccRecipients.map(recipientToDraftRecipient),
-			replyTos: replyTos.map(recipientToEncryptedMailAddress),
-			addedAttachments: await this._createAddedAttachments(attachments, [], senderMailGroupId, mailGroupKey),
+		const sk = aes256RandomKey()
+		const service = createDraftCreateData({
+			previousMessageId: previousMessageId,
+			conversationType: conversationType,
+			ownerEncSessionKey: encryptKey(mailGroupKey, sk),
+			symEncSessionKey: encryptKey(userGroupKey, sk), // legacy
+			draftData: createDraftData({
+				subject,
+				compressedBodyText: bodyText,
+				senderMailAddress,
+				senderName,
+				confidential,
+				method,
+				toRecipients: toRecipients.map(recipientToDraftRecipient),
+				ccRecipients: ccRecipients.map(recipientToDraftRecipient),
+				bccRecipients: bccRecipients.map(recipientToDraftRecipient),
+				replyTos: replyTos.map(recipientToEncryptedMailAddress),
+				addedAttachments: await this._createAddedAttachments(attachments, [], senderMailGroupId, mailGroupKey),
+				bodyText: "",
+				removedAttachments: [],
+			}),
 		})
 		const createDraftReturn = await this.serviceExecutor.post(DraftService, service, { sessionKey: sk })
 		return this.entityClient.load(MailTypeRef, createDraftReturn.draft)
@@ -303,21 +311,23 @@ export class MailFacade {
 		const replyTos = await this.getReplyTos(draft)
 
 		const sk = decryptKey(mailGroupKey, draft._ownerEncSessionKey as any)
-		const service = createDraftUpdateData()
-		service.draft = draft._id
-		service.draftData = createDraftData({
-			subject: subject,
-			compressedBodyText: body,
-			senderMailAddress: senderMailAddress,
-			senderName: senderName,
-			confidential: confidential,
-			method: draft.method,
-			toRecipients: toRecipients.map(recipientToDraftRecipient),
-			ccRecipients: ccRecipients.map(recipientToDraftRecipient),
-			bccRecipients: bccRecipients.map(recipientToDraftRecipient),
-			replyTos: replyTos,
-			removedAttachments: this._getRemovedAttachments(attachments, currentAttachments),
-			addedAttachments: await this._createAddedAttachments(attachments, currentAttachments, senderMailGroupId, mailGroupKey),
+		const service = createDraftUpdateData({
+			draft: draft._id,
+			draftData: createDraftData({
+				subject: subject,
+				compressedBodyText: body,
+				senderMailAddress: senderMailAddress,
+				senderName: senderName,
+				confidential: confidential,
+				method: draft.method,
+				toRecipients: toRecipients.map(recipientToDraftRecipient),
+				ccRecipients: ccRecipients.map(recipientToDraftRecipient),
+				bccRecipients: bccRecipients.map(recipientToDraftRecipient),
+				replyTos: replyTos,
+				removedAttachments: this._getRemovedAttachments(attachments, currentAttachments),
+				addedAttachments: await this._createAddedAttachments(attachments, currentAttachments, senderMailGroupId, mailGroupKey),
+				bodyText: "",
+			}),
 		})
 		this.deferredDraftId = draft._id
 		// we have to wait for the updated mail because sendMail() might be called right after this update
@@ -391,7 +401,7 @@ export class MailFacade {
 			// check if this is a new attachment or an existing one
 			if (isDataFile(providedFile)) {
 				// user added attachment
-				const fileSessionKey = aes128RandomKey()
+				const fileSessionKey = aes256RandomKey()
 				let referenceTokens: Array<BlobReferenceTokenWrapper>
 				if (isApp() || isDesktop()) {
 					const { location } = await this.fileApp.writeDataFile(providedFile)
@@ -402,7 +412,7 @@ export class MailFacade {
 				}
 				return this.createAndEncryptDraftAttachment(referenceTokens, fileSessionKey, providedFile, mailGroupKey)
 			} else if (isFileReference(providedFile)) {
-				const fileSessionKey = aes128RandomKey()
+				const fileSessionKey = aes256RandomKey()
 				const referenceTokens = await this.blobFacade.encryptAndUploadNative(
 					ArchiveDataType.Attachments,
 					providedFile.location,
@@ -413,9 +423,11 @@ export class MailFacade {
 			} else if (!containsId(existingFileIds, getLetId(providedFile))) {
 				// forwarded attachment which was not in the draft before
 				return this.crypto.resolveSessionKeyForInstance(providedFile).then((fileSessionKey) => {
-					const attachment = createDraftAttachment()
-					attachment.existingFile = getLetId(providedFile)
-					attachment.ownerEncFileSessionKey = encryptKey(mailGroupKey, assertNotNull(fileSessionKey, "filesessionkey was not resolved"))
+					const attachment = createDraftAttachment({
+						existingFile: getLetId(providedFile),
+						ownerEncFileSessionKey: encryptKey(mailGroupKey, assertNotNull(fileSessionKey, "filesessionkey was not resolved")),
+						newFile: null,
+					})
 					return attachment
 				})
 			} else {
@@ -439,23 +451,34 @@ export class MailFacade {
 		providedFile: DataFile | FileReference,
 		mailGroupKey: Aes128Key,
 	): DraftAttachment {
-		let attachment = createDraftAttachment()
-		let newAttachmentData = createNewDraftAttachment()
-		newAttachmentData.encFileName = encryptString(fileSessionKey, providedFile.name)
-		newAttachmentData.encMimeType = encryptString(fileSessionKey, providedFile.mimeType)
-		newAttachmentData.referenceTokens = referenceTokens
-		newAttachmentData.encCid = providedFile.cid == null ? null : encryptString(fileSessionKey, providedFile.cid)
-		attachment.newFile = newAttachmentData
-		attachment.ownerEncFileSessionKey = encryptKey(mailGroupKey, fileSessionKey)
-		return attachment
+		return createDraftAttachment({
+			newFile: createNewDraftAttachment({
+				encFileName: encryptString(fileSessionKey, providedFile.name),
+				encMimeType: encryptString(fileSessionKey, providedFile.mimeType),
+				referenceTokens: referenceTokens,
+				encCid: providedFile.cid == null ? null : encryptString(fileSessionKey, providedFile.cid),
+			}),
+			ownerEncFileSessionKey: encryptKey(mailGroupKey, fileSessionKey),
+			existingFile: null,
+		})
 	}
 
-	async sendDraft(draft: Mail, recipients: Array<Recipient>, language: string, kdfVersion: KdfType): Promise<void> {
+	async sendDraft(draft: Mail, recipients: Array<Recipient>, language: string): Promise<void> {
 		const senderMailGroupId = await this._getMailGroupIdForMailAddress(this.userFacade.getLoggedInUser(), draft.sender.address)
-		const bucketKey = aes128RandomKey()
-		const sendDraftData = createSendDraftData()
-		sendDraftData.language = language
-		sendDraftData.mail = draft._id
+		const bucketKey = aes256RandomKey()
+		const sendDraftData = createSendDraftData({
+			language: language,
+			mail: draft._id,
+			mailSessionKey: null,
+			attachmentKeyData: [],
+			calendarMethod: false,
+			internalRecipientKeyData: [],
+			plaintext: false,
+			bucketEncMailSessionKey: null,
+			senderNameUnencrypted: null,
+			secureExternalRecipientKeyData: [],
+			symEncInternalRecipientKeyData: [],
+		})
 
 		const attachments = await this.getAttachmentIds(draft)
 		for (let fileId of attachments) {
@@ -463,6 +486,8 @@ export class MailFacade {
 			const fileSessionKey = assertNotNull(await this.crypto.resolveSessionKeyForInstance(file), "fileSessionKey was null")
 			const data = createAttachmentKeyData({
 				file: fileId,
+				fileSessionKey: null,
+				bucketEncFileSessionKey: null,
 			})
 
 			if (draft.confidential) {
@@ -490,7 +515,7 @@ export class MailFacade {
 						sendDraftData.senderNameUnencrypted = draft.sender.name // needed for notification mail
 					}
 
-					return this._addRecipientKeyData(kdfVersion, bucketKey, sendDraftData, recipients, senderMailGroupId)
+					return this._addRecipientKeyData(bucketKey, sendDraftData, recipients, senderMailGroupId)
 				} else {
 					sendDraftData.mailSessionKey = bitArrayToUint8Array(sk)
 				}
@@ -515,11 +540,14 @@ export class MailFacade {
 				[elementIdPart(mailDetailsDraftId)],
 				ownerEncSessionKeyProvider,
 			)
+			if (mailDetails.length === 0) {
+				throw new NotFoundError(`MailDetailsDraft ${draft.mailDetailsDraft}`)
+			}
 			return mailDetails[0].details.replyTos
 		}
 	}
 
-	checkMailForPhishing(
+	async checkMailForPhishing(
 		mail: Mail,
 		links: Array<{
 			href: string
@@ -528,7 +556,16 @@ export class MailFacade {
 	): Promise<boolean> {
 		let score = 0
 		const senderAddress = mail.sender.address
-		const senderAuthenticated = mail.authStatus === MailAuthStatus.AUTHENTICATED
+
+		let senderAuthenticated
+		if (mail.authStatus !== null) {
+			senderAuthenticated = mail.authStatus === MailAuthenticationStatus.AUTHENTICATED
+		} else if (!isLegacyMail(mail)) {
+			const mailDetails = await this.loadMailDetailsBlob(mail)
+			senderAuthenticated = mailDetails.authStatus === MailAuthenticationStatus.AUTHENTICATED
+		} else {
+			senderAuthenticated = false
+		}
 
 		if (senderAuthenticated) {
 			if (this._checkFieldForPhishing(ReportedMailFieldType.FROM_ADDRESS, senderAddress)) {
@@ -608,51 +645,59 @@ export class MailFacade {
 		return this.phishingMarkers.has(hash)
 	}
 
-	async _addRecipientKeyData(
-		kdfVersion: KdfType,
-		bucketKey: Aes128Key,
-		service: SendDraftData,
-		recipients: Array<Recipient>,
-		senderMailGroupId: Id,
-	): Promise<void> {
+	async _addRecipientKeyData(bucketKey: Aes128Key, sendDraftData: SendDraftData, recipients: Array<Recipient>, senderMailGroupId: Id): Promise<void> {
 		const notFoundRecipients: string[] = []
 
 		for (let recipient of recipients) {
-			if (recipient.address === "system@tutanota.de" || !recipient) {
+			if (recipient.address === SYSTEM_GROUP_MAIL_ADDRESS || !recipient) {
 				notFoundRecipients.push(recipient.address)
 				continue
 			}
 
 			// copy password information if this is an external contact
 			// otherwise load the key information from the server
+			const isSharedMailboxSender = !isSameId(this.userFacade.getGroupId(GroupType.Mail), senderMailGroupId)
+
 			if (recipient.type === RecipientType.EXTERNAL) {
 				const password = this.getContactPassword(recipient.contact)
-
-				if (password == null || !isSameId(this.userFacade.getGroupId(GroupType.Mail), senderMailGroupId)) {
+				if (password == null || isSharedMailboxSender) {
 					// no password given and prevent sending to secure externals from shared group
 					notFoundRecipients.push(recipient.address)
 					continue
 				}
 
 				const salt = generateRandomSalt()
+				const kdfVersion = DEFAULT_KDF_TYPE
 				const passwordKey = await this.loginFacade.deriveUserPassphraseKey(kdfVersion, password, salt)
 				const passwordVerifier = createAuthVerifier(passwordKey)
 				const externalGroupKeys = await this._getExternalGroupKey(recipient.address, passwordKey, passwordVerifier)
-				const data = createSecureExternalRecipientKeyData()
-				data.mailAddress = recipient.address
-				data.symEncBucketKey = null // legacy for old permission system, not used anymore
-				data.kdfVersion = kdfVersion
-				data.ownerEncBucketKey = encryptKey(externalGroupKeys.externalMailGroupKey, bucketKey)
-				data.passwordVerifier = passwordVerifier
-				data.salt = salt
-				data.saltHash = sha256Hash(salt)
-				data.pwEncCommunicationKey = encryptKey(passwordKey, externalGroupKeys.externalUserGroupKey)
-				service.secureExternalRecipientKeyData.push(data)
+				const data = createSecureExternalRecipientKeyData({
+					mailAddress: recipient.address,
+					symEncBucketKey: null, // legacy for old permission system, not used anymore
+					kdfVersion: kdfVersion,
+					ownerEncBucketKey: encryptKey(externalGroupKeys.externalMailGroupKey, bucketKey),
+					passwordVerifier: passwordVerifier,
+					salt: salt,
+					saltHash: sha256Hash(salt),
+					pwEncCommunicationKey: encryptKey(passwordKey, externalGroupKeys.externalUserGroupKey),
+					autoTransmitPassword: null,
+					passwordChannelPhoneNumbers: [],
+				})
+				sendDraftData.secureExternalRecipientKeyData.push(data)
 			} else {
-				const keyData = await this.crypto.encryptBucketKeyForInternalRecipient(bucketKey, recipient.address, notFoundRecipients)
-
-				if (keyData) {
-					service.internalRecipientKeyData.push(keyData)
+				const keyData = await this.crypto.encryptBucketKeyForInternalRecipient(
+					isSharedMailboxSender ? senderMailGroupId : this.userFacade.getLoggedInUser().userGroup.group,
+					bucketKey,
+					recipient.address,
+					notFoundRecipients,
+				)
+				if (keyData == null) {
+					// cannot add recipient because of notFoundError
+					// we do not throw here because we want to collect all not found recipients first
+				} else if (isSameTypeRef(keyData._type, SymEncInternalRecipientKeyDataTypeRef)) {
+					sendDraftData.symEncInternalRecipientKeyData.push(keyData as SymEncInternalRecipientKeyData)
+				} else if (isSameTypeRef(keyData._type, InternalRecipientKeyDataTypeRef)) {
+					sendDraftData.internalRecipientKeyData.push(keyData as InternalRecipientKeyData)
 				}
 			}
 		}
@@ -713,30 +758,33 @@ export class MailFacade {
 						// it does not exist, so create it
 						let internalMailGroupKey = this.userFacade.getGroupKey(this.userFacade.getGroupId(GroupType.Mail))
 
-						let externalUserGroupKey = aes128RandomKey()
-						let externalMailGroupKey = aes128RandomKey()
-						let externalUserGroupInfoSessionKey = aes128RandomKey()
-						let externalMailGroupInfoSessionKey = aes128RandomKey()
-						let clientKey = aes128RandomKey()
-						let tutanotaPropertiesSessionKey = aes128RandomKey()
-						let mailboxSessionKey = aes128RandomKey()
+						let externalUserGroupKey = aes256RandomKey()
+						let externalMailGroupKey = aes256RandomKey()
+						let externalUserGroupInfoSessionKey = aes256RandomKey()
+						let externalMailGroupInfoSessionKey = aes256RandomKey()
+						let clientKey = aes256RandomKey()
+						let tutanotaPropertiesSessionKey = aes256RandomKey()
+						let mailboxSessionKey = aes256RandomKey()
 						let userEncEntropy = encryptBytes(externalUserGroupKey, random.generateRandomData(32))
-						let d = createExternalUserData()
-						d.verifier = verifier
-						d.userEncClientKey = encryptKey(externalUserGroupKey, clientKey)
-						d.externalUserEncUserGroupInfoSessionKey = encryptKey(externalUserGroupKey, externalUserGroupInfoSessionKey)
-						d.internalMailEncUserGroupInfoSessionKey = encryptKey(internalMailGroupKey, externalUserGroupInfoSessionKey)
-						d.externalUserEncMailGroupKey = encryptKey(externalUserGroupKey, externalMailGroupKey)
-						d.externalMailEncMailGroupInfoSessionKey = encryptKey(externalMailGroupKey, externalMailGroupInfoSessionKey)
-						d.internalMailEncMailGroupInfoSessionKey = encryptKey(internalMailGroupKey, externalMailGroupInfoSessionKey)
-						d.externalUserEncEntropy = userEncEntropy
-						d.externalUserEncTutanotaPropertiesSessionKey = encryptKey(externalUserGroupKey, tutanotaPropertiesSessionKey)
-						d.externalMailEncMailBoxSessionKey = encryptKey(externalMailGroupKey, mailboxSessionKey)
-						let userGroupData = createCreateExternalUserGroupData()
-						userGroupData.mailAddress = cleanedMailAddress
-						userGroupData.externalPwEncUserGroupKey = encryptKey(externalUserPwKey, externalUserGroupKey)
-						userGroupData.internalUserEncUserGroupKey = encryptKey(this.userFacade.getUserGroupKey(), externalUserGroupKey)
-						d.userGroupData = userGroupData
+						let userGroupData = createCreateExternalUserGroupData({
+							mailAddress: cleanedMailAddress,
+							externalPwEncUserGroupKey: encryptKey(externalUserPwKey, externalUserGroupKey),
+							internalUserEncUserGroupKey: encryptKey(this.userFacade.getUserGroupKey(), externalUserGroupKey),
+						})
+						let d = createExternalUserData({
+							verifier: verifier,
+							userEncClientKey: encryptKey(externalUserGroupKey, clientKey),
+							externalUserEncUserGroupInfoSessionKey: encryptKey(externalUserGroupKey, externalUserGroupInfoSessionKey),
+							internalMailEncUserGroupInfoSessionKey: encryptKey(internalMailGroupKey, externalUserGroupInfoSessionKey),
+							externalUserEncMailGroupKey: encryptKey(externalUserGroupKey, externalMailGroupKey),
+							externalMailEncMailGroupInfoSessionKey: encryptKey(externalMailGroupKey, externalMailGroupInfoSessionKey),
+							internalMailEncMailGroupInfoSessionKey: encryptKey(internalMailGroupKey, externalMailGroupInfoSessionKey),
+							externalUserEncEntropy: userEncEntropy,
+							externalUserEncTutanotaPropertiesSessionKey: encryptKey(externalUserGroupKey, tutanotaPropertiesSessionKey),
+							externalMailEncMailBoxSessionKey: encryptKey(externalMailGroupKey, mailboxSessionKey),
+							userGroupData: userGroupData,
+							kdfVersion: "0",
+						})
 						return this.serviceExecutor.post(ExternalUserService, d).then(() => {
 							return {
 								externalUserGroupKey: externalUserGroupKey,
@@ -779,11 +827,11 @@ export class MailFacade {
 		}
 	}
 
-	getRecipientKeyData(mailAddress: string): Promise<PublicKeyReturn | null> {
+	getRecipientKeyData(mailAddress: string): Promise<PublicKeyGetOut | null> {
 		return this.serviceExecutor
 			.get(
 				PublicKeyService,
-				createPublicKeyData({
+				createPublicKeyGetIn({
 					mailAddress,
 				}),
 			)
@@ -818,6 +866,7 @@ export class MailFacade {
 	async clearFolder(folderId: IdTuple) {
 		const deleteMailData = createDeleteMailData({
 			folder: folderId,
+			mails: [],
 		})
 		await this.serviceExecutor.delete(MailService, deleteMailData)
 	}
@@ -841,14 +890,13 @@ export class MailFacade {
 		const bucketKey = mail.bucketKey
 		let ownerEncSessionKeyProvider: OwnerEncSessionKeyProvider | undefined
 		if (bucketKey) {
-			const mailOwnerGroupId = assertNotNull(mail._ownerGroup)
-			const decBucketKey = lazyMemoized(() => this.crypto.decryptBucketKey(assertNotNull(mail.bucketKey), mailOwnerGroupId, FileTypeRef.type))
+			const typeModel = await resolveTypeReference(FileTypeRef)
+			const resolvedSessionKeys = await this.crypto.resolveWithBucketKey(assertNotNull(mail.bucketKey), mail, typeModel)
 			ownerEncSessionKeyProvider = async (instanceElementId: Id) => {
 				const instanceSessionKey = assertNotNull(
-					bucketKey.bucketEncSessionKeys.find((instanceSessionKey) => instanceElementId === instanceSessionKey.instanceId),
+					resolvedSessionKeys.instanceSessionKeys.find((instanceSessionKey) => instanceElementId === instanceSessionKey.instanceId),
 				)
-				const decryptedSessionKey = decryptKey(await decBucketKey(), instanceSessionKey.symEncSessionKey)
-				return encryptKey(this.userFacade.getGroupKey(mailOwnerGroupId), decryptedSessionKey)
+				return instanceSessionKey.symEncSessionKey
 			}
 		}
 		return await this.entityClient.loadMultiple(FileTypeRef, attachmentsListId, attachmentElementIds, ownerEncSessionKeyProvider)

@@ -6,7 +6,7 @@ import { BaseMobileHeader } from "../../gui/BaseMobileHeader.js"
 import { OfflineIndicatorMobile } from "../../gui/base/OfflineIndicator.js"
 import { ProgressBar } from "../../gui/base/ProgressBar.js"
 import { Icons, IconsSvg } from "../../gui/base/icons/Icons.js"
-import { CalendarNavConfiguration, CalendarViewType, getIconForViewType } from "./CalendarGuiUtils.js"
+import { CalendarNavConfiguration, CalendarViewType, getIconForViewType } from "../gui/CalendarGuiUtils.js"
 import { MobileHeaderMenuButton, MobileHeaderTitle } from "../../gui/MobileHeader.js"
 import { AppHeaderAttrs } from "../../gui/Header.js"
 import { attachDropdown } from "../../gui/base/Dropdown.js"
@@ -14,7 +14,7 @@ import { lang, TranslationKey } from "../../misc/LanguageViewModel.js"
 import { styles } from "../../gui/styles.js"
 import { Icon } from "../../gui/base/Icon.js"
 import { theme } from "../../gui/theme.js"
-import { clickHandler } from "../../gui/base/GuiUtils.js"
+import { ClickHandler } from "../../gui/base/GuiUtils.js"
 import { assertNotNull, memoized } from "@tutao/tutanota-utils"
 
 export interface CalendarMobileHeaderAttrs extends AppHeaderAttrs {
@@ -24,7 +24,7 @@ export interface CalendarMobileHeaderAttrs extends AppHeaderAttrs {
 	onCreateEvent: () => unknown
 	onToday: () => unknown
 	onViewTypeSelected: (viewType: CalendarViewType) => unknown
-	onTap?: clickHandler
+	onTap?: ClickHandler
 	showExpandIcon: boolean
 	isDaySelectorExpanded: boolean
 }
@@ -61,17 +61,11 @@ export class CalendarMobileHeader implements Component<CalendarMobileHeaderAttrs
 				onTap: attrs.onTap,
 			}),
 			right: [
-				...(styles.isDesktopLayout() || (!styles.isDesktopLayout() && styles.isTwoColumnLayout())
-					? [attrs.navConfiguration.back, attrs.navConfiguration.forward]
-					: []),
-				...(!styles.isDesktopLayout()
-					? [
-							m(TodayIconButton, {
-								click: attrs.onToday,
-							}),
-							this.renderViewSelector(attrs),
-					  ]
-					: []),
+				...(styles.isDesktopLayout() || styles.isTwoColumnLayout() ? [attrs.navConfiguration.back, attrs.navConfiguration.forward] : []),
+				m(TodayIconButton, {
+					click: attrs.onToday,
+				}),
+				this.renderViewSelector(attrs),
 				m(IconButton, {
 					icon: Icons.Add,
 					title: "createEvent_label",
@@ -123,7 +117,7 @@ export class CalendarMobileHeader implements Component<CalendarMobileHeaderAttrs
 }
 
 export interface TodayIconButtonAttrs {
-	click: clickHandler
+	click: ClickHandler
 }
 
 /**

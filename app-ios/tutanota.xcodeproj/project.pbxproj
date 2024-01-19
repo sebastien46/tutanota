@@ -7,6 +7,39 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3D0E44562B3C384B00F933A1 /* rand_entropy.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44552B3C384B00F933A1 /* rand_entropy.h */; };
+		3D0E44A42B3C3CE500F933A1 /* symmetric-shake.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44842B3C3CE500F933A1 /* symmetric-shake.c */; };
+		3D0E44A52B3C3CE500F933A1 /* cbd.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44852B3C3CE500F933A1 /* cbd.c */; };
+		3D0E44A62B3C3CE500F933A1 /* ntt.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44862B3C3CE500F933A1 /* ntt.c */; };
+		3D0E44A72B3C3CE500F933A1 /* poly.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44872B3C3CE500F933A1 /* poly.c */; };
+		3D0E44A82B3C3CE500F933A1 /* params.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44882B3C3CE500F933A1 /* params.h */; };
+		3D0E44A92B3C3CE500F933A1 /* polyvec.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44892B3C3CE500F933A1 /* polyvec.h */; };
+		3D0E44AA2B3C3CE500F933A1 /* reduce.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E448A2B3C3CE500F933A1 /* reduce.c */; };
+		3D0E44AB2B3C3CE500F933A1 /* verify.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E448B2B3C3CE500F933A1 /* verify.c */; };
+		3D0E44AC2B3C3CE500F933A1 /* kem.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E448C2B3C3CE500F933A1 /* kem.c */; };
+		3D0E44AD2B3C3CE500F933A1 /* indcpa.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E448D2B3C3CE500F933A1 /* indcpa.c */; };
+		3D0E44AE2B3C3CE500F933A1 /* symmetric.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E448E2B3C3CE500F933A1 /* symmetric.h */; };
+		3D0E44AF2B3C3CE500F933A1 /* ntt.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E448F2B3C3CE500F933A1 /* ntt.h */; };
+		3D0E44B02B3C3CE500F933A1 /* cbd.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44902B3C3CE500F933A1 /* cbd.h */; };
+		3D0E44B12B3C3CE500F933A1 /* reduce.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44912B3C3CE500F933A1 /* reduce.h */; };
+		3D0E44B22B3C3CE500F933A1 /* polyvec.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44922B3C3CE500F933A1 /* polyvec.c */; };
+		3D0E44B32B3C3CE500F933A1 /* poly.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44932B3C3CE500F933A1 /* poly.h */; };
+		3D0E44B42B3C3CE500F933A1 /* indcpa.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44942B3C3CE500F933A1 /* indcpa.h */; };
+		3D0E44B52B3C3CE500F933A1 /* verify.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44952B3C3CE500F933A1 /* verify.h */; };
+		3D0E44B62B3C3CE500F933A1 /* kem_kyber_1024.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44962B3C3CE500F933A1 /* kem_kyber_1024.c */; };
+		3D0E44B72B3C3CE500F933A1 /* common.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44982B3C3CE500F933A1 /* common.c */; };
+		3D0E44B82B3C3CE500F933A1 /* xkcp_dispatch.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E449A2B3C3CE500F933A1 /* xkcp_dispatch.h */; };
+		3D0E44B92B3C3CE500F933A1 /* KeccakP-1600-opt64.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E449E2B3C3CE500F933A1 /* KeccakP-1600-opt64.c */; };
+		3D0E44BA2B3C3CE500F933A1 /* xkcp_sha3.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E449F2B3C3CE500F933A1 /* xkcp_sha3.c */; };
+		3D0E44BB2B3C3CE500F933A1 /* fips202.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44A12B3C3CE500F933A1 /* fips202.h */; };
+		3D0E44BC2B3C3CE500F933A1 /* fips202.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44A22B3C3CE500F933A1 /* fips202.c */; };
+		3D0E44BE2B3C3D4900F933A1 /* randombytes.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44BD2B3C3D4900F933A1 /* randombytes.h */; };
+		3D0E44C02B3C3DAC00F933A1 /* brg_endian.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44BF2B3C3DAC00F933A1 /* brg_endian.h */; };
+		3D0E44C22B3C3DC400F933A1 /* KeccakP-1600-SnP.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44C12B3C3DC400F933A1 /* KeccakP-1600-SnP.h */; };
+		3D0E44C42B3C3DD300F933A1 /* KeccakP-1600-opt64-config.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44C32B3C3DD300F933A1 /* KeccakP-1600-opt64-config.h */; };
+		3D0E44C82B3C3E0B00F933A1 /* SnP-Relaned.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D0E44C72B3C3E0B00F933A1 /* SnP-Relaned.h */; };
+		3D0E44CA2B3C3EC000F933A1 /* rand_entropy.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44C92B3C3EC000F933A1 /* rand_entropy.c */; };
+		3D0E44CE2B3C40AB00F933A1 /* kem.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0E44CD2B3C40AB00F933A1 /* kem.c */; };
 		3D0EB1F626F489AD002E5102 /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D0EB1F526F48854002E5102 /* KeychainManager.swift */; };
 		3D0EB1F926F49E36002E5102 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D0EB1F826F49E36002E5102 /* AppDelegate.swift */; };
 		3D0EB1FC26F4BEE4002E5102 /* AlarmManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D0EB1FB26F4BEE4002E5102 /* AlarmManager.swift */; };
@@ -78,6 +111,11 @@
 		3D648B2C2AB98BEA00893C8D /* argon2.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D648B1D2AB98BEA00893C8D /* argon2.c */; };
 		3D648B2D2AB98BEA00893C8D /* encoding.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D648B1E2AB98BEA00893C8D /* encoding.c */; };
 		3D652B5820F8DC1600DF9962 /* build in Resources */ = {isa = PBXBuildFile; fileRef = 3D652B5720F8DC1500DF9962 /* build */; };
+		3D69DDF82AD441C000C6C900 /* KyberKeyPair.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D69DDF72AD441C000C6C900 /* KyberKeyPair.swift */; };
+		3D69DDFB2AD441D100C6C900 /* KyberPublicKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D69DDF92AD441D100C6C900 /* KyberPublicKey.swift */; };
+		3D69DDFC2AD441D100C6C900 /* KyberPrivateKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D69DDFA2AD441D100C6C900 /* KyberPrivateKey.swift */; };
+		3D69DDFE2AD441F000C6C900 /* KyberEncapsulation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D69DDFD2AD441F000C6C900 /* KyberEncapsulation.swift */; };
+		3D69DE002AD4427E00C6C900 /* Kyber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D69DDFF2AD4427E00C6C900 /* Kyber.swift */; };
 		3D6A0AEA212C1701001CD791 /* CompatibilityTest.m in Sources */ = {isa = PBXBuildFile; fileRef = 3D6A0AE9212C1701001CD791 /* CompatibilityTest.m */; settings = {COMPILER_FLAGS = "-Itutanota/include"; }; };
 		3D73DA312731953E008E7A8A /* RemoteProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D73DA302731953E008E7A8A /* RemoteProtocol.swift */; };
 		3D73DA3427319A91008E7A8A /* Operation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D73DA3327319A91008E7A8A /* Operation.swift */; };
@@ -173,6 +211,7 @@
 		3D9B12AF2721966C002B46A1 /* IdTuple.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D9B12AE2721966C002B46A1 /* IdTuple.swift */; };
 		3D9B12B32721A1E2002B46A1 /* TUTErrorFactory.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D9B12B12721A1E2002B46A1 /* TUTErrorFactory.h */; };
 		3D9B12B42721A1E2002B46A1 /* TUTErrorFactory.m in Sources */ = {isa = PBXBuildFile; fileRef = 3D9B12B22721A1E2002B46A1 /* TUTErrorFactory.m */; };
+		3D9CDA4F2AD58266000B9267 /* KyberTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D9CDA4E2AD58266000B9267 /* KyberTest.swift */; };
 		3DA047BF212C1BBE0062C36C /* CompatibilityTestData.json in Resources */ = {isa = PBXBuildFile; fileRef = 3DA047BE212C1BBD0062C36C /* CompatibilityTestData.json */; };
 		3DAA23A9267A208200219051 /* UIColorExtensionsTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAA23A8267A208200219051 /* UIColorExtensionsTest.swift */; };
 		3DAED2AF29A6267D00806DEA /* NotificationsHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DAED2AE29A6267D00806DEA /* NotificationsHandler.swift */; };
@@ -231,6 +270,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		3D6715312B4412D600E26D7D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3DD4A07B20F8C6240086EB36 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3D67152D2B4410B200E26D7D;
+			remoteInfo = "liboqs header setup";
+		};
 		3DD4A09C20F8C6260086EB36 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 3DD4A07B20F8C6240086EB36 /* Project object */;
@@ -272,6 +318,39 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		3D0E44552B3C384B00F933A1 /* rand_entropy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = rand_entropy.h; sourceTree = "<group>"; };
+		3D0E44842B3C3CE500F933A1 /* symmetric-shake.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "symmetric-shake.c"; sourceTree = "<group>"; };
+		3D0E44852B3C3CE500F933A1 /* cbd.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = cbd.c; sourceTree = "<group>"; };
+		3D0E44862B3C3CE500F933A1 /* ntt.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = ntt.c; sourceTree = "<group>"; };
+		3D0E44872B3C3CE500F933A1 /* poly.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = poly.c; sourceTree = "<group>"; };
+		3D0E44882B3C3CE500F933A1 /* params.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = params.h; sourceTree = "<group>"; };
+		3D0E44892B3C3CE500F933A1 /* polyvec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = polyvec.h; sourceTree = "<group>"; };
+		3D0E448A2B3C3CE500F933A1 /* reduce.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = reduce.c; sourceTree = "<group>"; };
+		3D0E448B2B3C3CE500F933A1 /* verify.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = verify.c; sourceTree = "<group>"; };
+		3D0E448C2B3C3CE500F933A1 /* kem.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = kem.c; sourceTree = "<group>"; };
+		3D0E448D2B3C3CE500F933A1 /* indcpa.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = indcpa.c; sourceTree = "<group>"; };
+		3D0E448E2B3C3CE500F933A1 /* symmetric.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = symmetric.h; sourceTree = "<group>"; };
+		3D0E448F2B3C3CE500F933A1 /* ntt.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ntt.h; sourceTree = "<group>"; };
+		3D0E44902B3C3CE500F933A1 /* cbd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = cbd.h; sourceTree = "<group>"; };
+		3D0E44912B3C3CE500F933A1 /* reduce.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = reduce.h; sourceTree = "<group>"; };
+		3D0E44922B3C3CE500F933A1 /* polyvec.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = polyvec.c; sourceTree = "<group>"; };
+		3D0E44932B3C3CE500F933A1 /* poly.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = poly.h; sourceTree = "<group>"; };
+		3D0E44942B3C3CE500F933A1 /* indcpa.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = indcpa.h; sourceTree = "<group>"; };
+		3D0E44952B3C3CE500F933A1 /* verify.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = verify.h; sourceTree = "<group>"; };
+		3D0E44962B3C3CE500F933A1 /* kem_kyber_1024.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = kem_kyber_1024.c; sourceTree = "<group>"; };
+		3D0E44982B3C3CE500F933A1 /* common.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = common.c; sourceTree = "<group>"; };
+		3D0E449A2B3C3CE500F933A1 /* xkcp_dispatch.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = xkcp_dispatch.h; sourceTree = "<group>"; };
+		3D0E449E2B3C3CE500F933A1 /* KeccakP-1600-opt64.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = "KeccakP-1600-opt64.c"; sourceTree = "<group>"; };
+		3D0E449F2B3C3CE500F933A1 /* xkcp_sha3.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = xkcp_sha3.c; sourceTree = "<group>"; };
+		3D0E44A12B3C3CE500F933A1 /* fips202.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = fips202.h; sourceTree = "<group>"; };
+		3D0E44A22B3C3CE500F933A1 /* fips202.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = fips202.c; sourceTree = "<group>"; };
+		3D0E44BD2B3C3D4900F933A1 /* randombytes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = randombytes.h; sourceTree = "<group>"; };
+		3D0E44BF2B3C3DAC00F933A1 /* brg_endian.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = brg_endian.h; sourceTree = "<group>"; };
+		3D0E44C12B3C3DC400F933A1 /* KeccakP-1600-SnP.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "KeccakP-1600-SnP.h"; sourceTree = "<group>"; };
+		3D0E44C32B3C3DD300F933A1 /* KeccakP-1600-opt64-config.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "KeccakP-1600-opt64-config.h"; sourceTree = "<group>"; };
+		3D0E44C72B3C3E0B00F933A1 /* SnP-Relaned.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "SnP-Relaned.h"; sourceTree = "<group>"; };
+		3D0E44C92B3C3EC000F933A1 /* rand_entropy.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = rand_entropy.c; sourceTree = "<group>"; };
+		3D0E44CD2B3C40AB00F933A1 /* kem.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = kem.c; sourceTree = "<group>"; };
 		3D0EB1F526F48854002E5102 /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		3D0EB1F826F49E36002E5102 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		3D0EB1FB26F4BEE4002E5102 /* AlarmManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmManager.swift; sourceTree = "<group>"; };
@@ -340,6 +419,11 @@
 		3D648B1D2AB98BEA00893C8D /* argon2.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = argon2.c; sourceTree = "<group>"; };
 		3D648B1E2AB98BEA00893C8D /* encoding.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = encoding.c; sourceTree = "<group>"; };
 		3D652B5720F8DC1500DF9962 /* build */ = {isa = PBXFileReference; lastKnownFileType = folder; name = build; path = ../../build; sourceTree = "<group>"; };
+		3D69DDF72AD441C000C6C900 /* KyberKeyPair.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = KyberKeyPair.swift; sourceTree = "<group>"; };
+		3D69DDF92AD441D100C6C900 /* KyberPublicKey.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = KyberPublicKey.swift; sourceTree = "<group>"; };
+		3D69DDFA2AD441D100C6C900 /* KyberPrivateKey.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = KyberPrivateKey.swift; sourceTree = "<group>"; };
+		3D69DDFD2AD441F000C6C900 /* KyberEncapsulation.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = KyberEncapsulation.swift; sourceTree = "<group>"; };
+		3D69DDFF2AD4427E00C6C900 /* Kyber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kyber.swift; sourceTree = "<group>"; };
 		3D6A0AE9212C1701001CD791 /* CompatibilityTest.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = CompatibilityTest.m; sourceTree = "<group>"; };
 		3D73DA302731953E008E7A8A /* RemoteProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteProtocol.swift; sourceTree = "<group>"; };
 		3D73DA3327319A91008E7A8A /* Operation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Operation.swift; sourceTree = "<group>"; };
@@ -439,6 +523,7 @@
 		3D9B12AE2721966C002B46A1 /* IdTuple.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdTuple.swift; sourceTree = "<group>"; };
 		3D9B12B12721A1E2002B46A1 /* TUTErrorFactory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TUTErrorFactory.h; sourceTree = "<group>"; };
 		3D9B12B22721A1E2002B46A1 /* TUTErrorFactory.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TUTErrorFactory.m; sourceTree = "<group>"; };
+		3D9CDA4E2AD58266000B9267 /* KyberTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KyberTest.swift; sourceTree = "<group>"; };
 		3DA047BE212C1BBD0062C36C /* CompatibilityTestData.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = CompatibilityTestData.json; sourceTree = "<group>"; };
 		3DAA23A5267A202000219051 /* tutanotaTests-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "tutanotaTests-Bridging-Header.h"; sourceTree = "<group>"; };
 		3DAA23A8267A208200219051 /* UIColorExtensionsTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIColorExtensionsTest.swift; sourceTree = "<group>"; };
@@ -533,6 +618,124 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		3D0E447E2B3C3CE500F933A1 /* liboqs */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E447F2B3C3CE500F933A1 /* src */,
+			);
+			path = liboqs;
+			sourceTree = "<group>";
+		};
+		3D0E447F2B3C3CE500F933A1 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E44802B3C3CE500F933A1 /* kem */,
+				3D0E44972B3C3CE500F933A1 /* common */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		3D0E44802B3C3CE500F933A1 /* kem */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E44CD2B3C40AB00F933A1 /* kem.c */,
+				3D0E44822B3C3CE500F933A1 /* kyber */,
+			);
+			path = kem;
+			sourceTree = "<group>";
+		};
+		3D0E44822B3C3CE500F933A1 /* kyber */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E44832B3C3CE500F933A1 /* pqcrystals-kyber_kyber1024_ref */,
+				3D0E44962B3C3CE500F933A1 /* kem_kyber_1024.c */,
+			);
+			path = kyber;
+			sourceTree = "<group>";
+		};
+		3D0E44832B3C3CE500F933A1 /* pqcrystals-kyber_kyber1024_ref */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E44842B3C3CE500F933A1 /* symmetric-shake.c */,
+				3D0E44852B3C3CE500F933A1 /* cbd.c */,
+				3D0E44862B3C3CE500F933A1 /* ntt.c */,
+				3D0E44872B3C3CE500F933A1 /* poly.c */,
+				3D0E44882B3C3CE500F933A1 /* params.h */,
+				3D0E44892B3C3CE500F933A1 /* polyvec.h */,
+				3D0E448A2B3C3CE500F933A1 /* reduce.c */,
+				3D0E448B2B3C3CE500F933A1 /* verify.c */,
+				3D0E448C2B3C3CE500F933A1 /* kem.c */,
+				3D0E448D2B3C3CE500F933A1 /* indcpa.c */,
+				3D0E448E2B3C3CE500F933A1 /* symmetric.h */,
+				3D0E448F2B3C3CE500F933A1 /* ntt.h */,
+				3D0E44902B3C3CE500F933A1 /* cbd.h */,
+				3D0E44912B3C3CE500F933A1 /* reduce.h */,
+				3D0E44922B3C3CE500F933A1 /* polyvec.c */,
+				3D0E44932B3C3CE500F933A1 /* poly.h */,
+				3D0E44942B3C3CE500F933A1 /* indcpa.h */,
+				3D0E44952B3C3CE500F933A1 /* verify.h */,
+			);
+			path = "pqcrystals-kyber_kyber1024_ref";
+			sourceTree = "<group>";
+		};
+		3D0E44972B3C3CE500F933A1 /* common */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E44982B3C3CE500F933A1 /* common.c */,
+				3D0E44992B3C3CE500F933A1 /* sha3 */,
+				3D0E44A02B3C3CE500F933A1 /* pqclean_shims */,
+			);
+			path = common;
+			sourceTree = "<group>";
+		};
+		3D0E44992B3C3CE500F933A1 /* sha3 */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E449A2B3C3CE500F933A1 /* xkcp_dispatch.h */,
+				3D0E449B2B3C3CE500F933A1 /* xkcp_low */,
+				3D0E449F2B3C3CE500F933A1 /* xkcp_sha3.c */,
+			);
+			path = sha3;
+			sourceTree = "<group>";
+		};
+		3D0E449B2B3C3CE500F933A1 /* xkcp_low */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E449C2B3C3CE500F933A1 /* KeccakP-1600 */,
+			);
+			path = xkcp_low;
+			sourceTree = "<group>";
+		};
+		3D0E449C2B3C3CE500F933A1 /* KeccakP-1600 */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E449D2B3C3CE500F933A1 /* plain-64bits */,
+			);
+			path = "KeccakP-1600";
+			sourceTree = "<group>";
+		};
+		3D0E449D2B3C3CE500F933A1 /* plain-64bits */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E44C32B3C3DD300F933A1 /* KeccakP-1600-opt64-config.h */,
+				3D0E44BF2B3C3DAC00F933A1 /* brg_endian.h */,
+				3D0E44C12B3C3DC400F933A1 /* KeccakP-1600-SnP.h */,
+				3D0E449E2B3C3CE500F933A1 /* KeccakP-1600-opt64.c */,
+				3D0E44C72B3C3E0B00F933A1 /* SnP-Relaned.h */,
+			);
+			path = "plain-64bits";
+			sourceTree = "<group>";
+		};
+		3D0E44A02B3C3CE500F933A1 /* pqclean_shims */ = {
+			isa = PBXGroup;
+			children = (
+				3D0E44BD2B3C3D4900F933A1 /* randombytes.h */,
+				3D0E44A12B3C3CE500F933A1 /* fips202.h */,
+				3D0E44A22B3C3CE500F933A1 /* fips202.c */,
+			);
+			path = pqclean_shims;
+			sourceTree = "<group>";
+		};
 		3D220203293F75B000366FD2 /* Webauthn */ = {
 			isa = PBXGroup;
 			children = (
@@ -672,12 +875,16 @@
 				3D891F002105B12E0031E528 /* TUTCrypto.m */,
 				3D891F1D2105BB200031E528 /* rsa_oaep_sha256.h */,
 				3D891EFD2105B12E0031E528 /* rsa_oaep_sha256.c */,
+				3D0E44C92B3C3EC000F933A1 /* rand_entropy.c */,
+				3D0E44552B3C384B00F933A1 /* rand_entropy.h */,
+				3D0E447E2B3C3CE500F933A1 /* liboqs */,
 				3D648B0C2AB98BEA00893C8D /* phc-winner-argon2 */,
 				3DDE55232AB88D8300A77D14 /* AES.swift */,
 				3DF7FA592AB2EE3B00DB08D1 /* Argon2.swift */,
-				3D9B12A22721926E002B46A1 /* ValueEncryption.swift */,
 				3D84F5722722F35600858A58 /* IosNativeCryptoFacade.swift */,
 				3DB07C7A27303F0600BFBB4D /* Keys.swift */,
+				3D69DDFF2AD4427E00C6C900 /* Kyber.swift */,
+				3D9B12A22721926E002B46A1 /* ValueEncryption.swift */,
 			);
 			path = Crypto;
 			sourceTree = "<group>";
@@ -1297,6 +1504,10 @@
 				3DBA56C42850AAA6004416BE /* UploadTaskResponse.swift */,
 				3DBA56C52850AAA6004416BE /* NativeKey.swift */,
 				3DBA56C62850AAA6004416BE /* CommonNativeFacade.swift */,
+				3D69DDF72AD441C000C6C900 /* KyberKeyPair.swift */,
+				3D69DDFA2AD441D100C6C900 /* KyberPrivateKey.swift */,
+				3D69DDF92AD441D100C6C900 /* KyberPublicKey.swift */,
+				3D69DDFD2AD441F000C6C900 /* KyberEncapsulation.swift */,
 			);
 			path = GeneratedIpc;
 			sourceTree = "<group>";
@@ -1412,6 +1623,7 @@
 				3D4A426029B638D700B10451 /* AlarmManagerTest.swift */,
 				3DF7FA5D2AB2FBE700DB08D1 /* CompatibilityTestSwift.swift */,
 				3D1801532AB0B85100C72613 /* AlarmEntitiesTest.swift */,
+				3D9CDA4E2AD58266000B9267 /* KyberTest.swift */,
 			);
 			path = tutanotaTests;
 			sourceTree = "<group>";
@@ -1447,20 +1659,54 @@
 			buildActionMask = 2147483647;
 			files = (
 				3D648B222AB98BEA00893C8D /* core.h in Headers */,
+				3D0E44AF2B3C3CE500F933A1 /* ntt.h in Headers */,
 				3D648B292AB98BEA00893C8D /* encoding.h in Headers */,
+				3D0E44BE2B3C3D4900F933A1 /* randombytes.h in Headers */,
 				3D648B242AB98BEA00893C8D /* blamka-round-opt.h in Headers */,
 				3D4E3CAA28EC6787001FA9D1 /* sqlite3.h in Headers */,
+				3D0E44AE2B3C3CE500F933A1 /* symmetric.h in Headers */,
 				3D9B12B32721A1E2002B46A1 /* TUTErrorFactory.h in Headers */,
+				3D0E44562B3C384B00F933A1 /* rand_entropy.h in Headers */,
 				3DCE7AAB27200E0A0085E40D /* WebviewHacks.h in Headers */,
 				3D648B202AB98BEA00893C8D /* argon2.h in Headers */,
 				3D648B232AB98BEA00893C8D /* blamka-round-ref.h in Headers */,
+				3D0E44C02B3C3DAC00F933A1 /* brg_endian.h in Headers */,
+				3D0E44A82B3C3CE500F933A1 /* params.h in Headers */,
+				3D0E44BB2B3C3CE500F933A1 /* fips202.h in Headers */,
+				3D0E44C42B3C3DD300F933A1 /* KeccakP-1600-opt64-config.h in Headers */,
+				3D0E44B82B3C3CE500F933A1 /* xkcp_dispatch.h in Headers */,
 				3D648B2B2AB98BEA00893C8D /* thread.h in Headers */,
+				3D0E44B42B3C3CE500F933A1 /* indcpa.h in Headers */,
 				3D648B252AB98BEA00893C8D /* blake2.h in Headers */,
+				3D0E44B02B3C3CE500F933A1 /* cbd.h in Headers */,
+				3D0E44C22B3C3DC400F933A1 /* KeccakP-1600-SnP.h in Headers */,
+				3D0E44B32B3C3CE500F933A1 /* poly.h in Headers */,
 				3D648B272AB98BEA00893C8D /* blake2-impl.h in Headers */,
+				3D0E44C82B3C3E0B00F933A1 /* SnP-Relaned.h in Headers */,
+				3D0E44B12B3C3CE500F933A1 /* reduce.h in Headers */,
+				3D0E44A92B3C3CE500F933A1 /* polyvec.h in Headers */,
+				3D0E44B52B3C3CE500F933A1 /* verify.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXHeadersBuildPhase section */
+
+/* Begin PBXLegacyTarget section */
+		3D67152D2B4410B200E26D7D /* liboqs header setup */ = {
+			isa = PBXLegacyTarget;
+			buildArgumentsString = "-f Makefile_liboqs include";
+			buildConfigurationList = 3D6715302B4410B300E26D7D /* Build configuration list for PBXLegacyTarget "liboqs header setup" */;
+			buildPhases = (
+			);
+			buildToolPath = /usr/bin/make;
+			buildWorkingDirectory = "$(SRCROOT)/../libs/webassembly";
+			dependencies = (
+			);
+			name = "liboqs header setup";
+			passBuildSettingsInEnvironment = 1;
+			productName = "liboqs header setup";
+		};
+/* End PBXLegacyTarget section */
 
 /* Begin PBXNativeTarget section */
 		3DD4A08220F8C6240086EB36 /* tutanota */ = {
@@ -1477,6 +1723,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				3D6715322B4412D600E26D7D /* PBXTargetDependency */,
 				3DEF18F92924E1F1009C4B55 /* PBXTargetDependency */,
 			);
 			name = tutanota;
@@ -1533,6 +1780,9 @@
 				LastUpgradeCheck = 1300;
 				ORGANIZATIONNAME = "Tutao GmbH";
 				TargetAttributes = {
+					3D67152D2B4410B200E26D7D = {
+						CreatedOnToolsVersion = 15.0.1;
+					};
 					3DD4A08220F8C6240086EB36 = {
 						CreatedOnToolsVersion = 9.4.1;
 						LastSwiftMigration = 1200;
@@ -1658,6 +1908,7 @@
 				3DD4A08220F8C6240086EB36 /* tutanota */,
 				3DD4A09A20F8C6260086EB36 /* tutanotaTests */,
 				3DEF18EF2924E1F1009C4B55 /* TutanotaShareExtension */,
+				3D67152D2B4410B200E26D7D /* liboqs header setup */,
 			);
 		};
 /* End PBXProject section */
@@ -1773,8 +2024,10 @@
 				3D3B516229376C2200C1B7DA /* SharingUtils.swift in Sources */,
 				3D220200293F752D00366FD2 /* WebAuthnSignResult.swift in Sources */,
 				3DBA56D32850AAA6004416BE /* ElectronResult.swift in Sources */,
+				3D69DDFE2AD441F000C6C900 /* KyberEncapsulation.swift in Sources */,
 				3DBA56C92850AAA6004416BE /* DownloadTaskResponse.swift in Sources */,
 				3DBA56CE2850AAA6004416BE /* IosGlobalDispatcher.swift in Sources */,
+				3D0E44AA2B3C3CE500F933A1 /* reduce.c in Sources */,
 				3DBA56CD2850AAA6004416BE /* NativeShortcut.swift in Sources */,
 				3D220205293F75C100366FD2 /* IosWebauthnFacade.swift in Sources */,
 				3DCC3F472ACED5DB00C9C27E /* UnfairLock.swift in Sources */,
@@ -1793,34 +2046,42 @@
 				3DC5DEC728576621007364FF /* NativeInterface.swift in Sources */,
 				3D220202293F752D00366FD2 /* WebauthnKeyDescriptor.swift in Sources */,
 				3DCE7AAC27200E0A0085E40D /* WebviewHacks.m in Sources */,
-				3D648B282AB98BEA00893C8D /* ref.c in Sources */,
 				3DCE7AA22719D04B0085E40D /* UserPreferenceFacade.swift in Sources */,
 				3D0EB1F626F489AD002E5102 /* KeychainManager.swift in Sources */,
 				3DBA56D22850AAA6004416BE /* ErrorInfo.swift in Sources */,
 				3D4A426929B6513900B10451 /* DateProvider.swift in Sources */,
+				3D0E44BA2B3C3CE500F933A1 /* xkcp_sha3.c in Sources */,
 				3D92867C273A7D19006B8FB2 /* TutanotaError.swift in Sources */,
+				3D0E44AC2B3C3CE500F933A1 /* kem.c in Sources */,
+				3D69DE002AD4427E00C6C900 /* Kyber.swift in Sources */,
 				3D3AFAE2285B0C350077F302 /* NativeContact.swift in Sources */,
+				3D0E44A62B3C3CE500F933A1 /* ntt.c in Sources */,
 				3D891F082105B12F0031E528 /* rsa_oaep_sha256.c in Sources */,
 				3D2201F7293F750D00366FD2 /* WebAuthnFacadeReceiveDispatcher.swift in Sources */,
 				3DC5DECB2858C12D007364FF /* NativePushFacadeReceiveDispatcher.swift in Sources */,
 				3D9B12AF2721966C002B46A1 /* IdTuple.swift in Sources */,
 				3D92867F273BBA9D006B8FB2 /* KeyGeneratorSecureEnclave.swift in Sources */,
 				3D3AFAEF285CB1DC0077F302 /* CommonSystemFacade.swift in Sources */,
+				3D0E44CA2B3C3EC000F933A1 /* rand_entropy.c in Sources */,
 				3D9B12A6272192C2002B46A1 /* AlarmNotification.swift in Sources */,
 				3D87ECE6212D9EB000FD7315 /* TUTIcons.m in Sources */,
 				3D9B12A32721926E002B46A1 /* ValueEncryption.swift in Sources */,
 				3D891F0D2105B12F0031E528 /* TUTEncodingConverter.m in Sources */,
 				3D4E3CA228EC5C4F001FA9D1 /* IosSqlCipherFade.swift in Sources */,
 				3D0EB1FC26F4BEE4002E5102 /* AlarmManager.swift in Sources */,
+				3D69DDFB2AD441D100C6C900 /* KyberPublicKey.swift in Sources */,
 				3DBA56CA2850AAA6004416BE /* IpcClientRect.swift in Sources */,
 				3DCB9B8728F711220042A6BB /* SqlCipherStatement.swift in Sources */,
 				3DC299FD2673668000E1E79F /* QueryUtils.swift in Sources */,
 				3D2201FE293F752D00366FD2 /* WebAuthnRegistrationResult.swift in Sources */,
 				3D3AFAE4285B0C350077F302 /* IntegrationInfo.swift in Sources */,
+				3D0E44A42B3C3CE500F933A1 /* symmetric-shake.c in Sources */,
 				3DBA56D42850AAA6004416BE /* UploadTaskResponse.swift in Sources */,
+				3D0E44AB2B3C3CE500F933A1 /* verify.c in Sources */,
+				3D0E44B72B3C3CE500F933A1 /* common.c in Sources */,
 				3DBA56CC2850AAA6004416BE /* ThemeFacadeReceiveDispatcher.swift in Sources */,
-				3D648B2A2AB98BEA00893C8D /* core.c in Sources */,
 				3DC299FA267358AF00E1E79F /* ThemeManager.swift in Sources */,
+				3D0E44B22B3C3CE500F933A1 /* polyvec.c in Sources */,
 				3D3AFAE8285B0DB60077F302 /* IosMobileSystemFacade.swift in Sources */,
 				3DDE55242AB88D8300A77D14 /* AES.swift in Sources */,
 				3D9B129727216D60002B46A1 /* ContactsSource.swift in Sources */,
@@ -1828,24 +2089,25 @@
 				3D3AFAEA285B292C0077F302 /* DataWrapper.swift in Sources */,
 				3DD10DB227EA148D0076C9A2 /* BlobUtil.swift in Sources */,
 				3DBA56D02850AAA6004416BE /* ThemeFacade.swift in Sources */,
+				3D0E44A52B3C3CE500F933A1 /* cbd.c in Sources */,
 				3D97821A2739600700DB639C /* URLSession+Sync.swift in Sources */,
 				3DC5DEDB2858D6A9007364FF /* RsaKeyPair.swift in Sources */,
 				3D3AFAF2285CB2CF0077F302 /* IosCommonSystemFacade.swift in Sources */,
-				3D648B262AB98BEA00893C8D /* blake2b.c in Sources */,
 				3D84F57C27231F1F00858A58 /* Serialization.swift in Sources */,
+				3D0E44B92B3C3CE500F933A1 /* KeccakP-1600-opt64.c in Sources */,
 				3D2DB91B2733F43B00BCEF4C /* IosNativeCredentialsFacade.swift in Sources */,
 				3D4A426529B63E1E00B10451 /* AlarmPersistor.swift in Sources */,
-				3D4E3CA828EC63A6001FA9D1 /* sqlite3.c in Sources */,
 				3D84F56D2722CEF900858A58 /* FileUtils.swift in Sources */,
 				3D2201F8293F750D00366FD2 /* WebAuthnFacade.swift in Sources */,
 				3DCE7AA7271D63BF0085E40D /* ViewController.swift in Sources */,
 				3DBA56CF2850AAA6004416BE /* FileFacadeReceiveDispatcher.swift in Sources */,
 				3D73DA3427319A91008E7A8A /* Operation.swift in Sources */,
 				3DC5DED82858CB58007364FF /* NativeCryptoFacadeReceiveDispatcher.swift in Sources */,
+				3D0E44CE2B3C40AB00F933A1 /* kem.c in Sources */,
 				3DE46D2B2848EBDA00DC9D43 /* IosFileFacade.swift in Sources */,
-				3D648B212AB98BEA00893C8D /* thread.c in Sources */,
 				3D4A426729B6453700B10451 /* AlarmScheduler.swift in Sources */,
 				3DBA56D52850AAA6004416BE /* NativeKey.swift in Sources */,
+				3D0E44A72B3C3CE500F933A1 /* poly.c in Sources */,
 				3D4A426329B63C0E00B10451 /* AlarmCryptor.swift in Sources */,
 				3DDE413B28F4665700837BE6 /* SqlCipherDb.swift in Sources */,
 				3DCB9B8528F710CC0042A6BB /* TaggedSqlValue.swift in Sources */,
@@ -1854,6 +2116,7 @@
 				3DF7FA5A2AB2EE3B00DB08D1 /* Argon2.swift in Sources */,
 				3DBE94BA273147830077A6EA /* RemoteBridge.swift in Sources */,
 				3D84F5762723112400858A58 /* FileViewer.swift in Sources */,
+				3D69DDF82AD441C000C6C900 /* KyberKeyPair.swift in Sources */,
 				3DBA56C72850AAA6004416BE /* FileFacade.swift in Sources */,
 				3DBA56D12850AAA6004416BE /* CommonNativeFacadeSendDispatcher.swift in Sources */,
 				3D891F0B2105B12F0031E528 /* TUTCrypto.m in Sources */,
@@ -1866,16 +2129,25 @@
 				3D84F57927231E8600858A58 /* SSEInfo.swift in Sources */,
 				3DC5DECA2858C12D007364FF /* NativePushFacade.swift in Sources */,
 				3D239302287EC96200DD7396 /* CustomSchemeHandlers.swift in Sources */,
+				3D0E44AD2B3C3CE500F933A1 /* indcpa.c in Sources */,
 				3D2201FF293F752D00366FD2 /* WebAuthnRegistrationChallenge.swift in Sources */,
 				3D84F5732722F35600858A58 /* IosNativeCryptoFacade.swift in Sources */,
 				3DBA56C82850AAA6004416BE /* MobileFacadeSendDispatcher.swift in Sources */,
-				3D648B2C2AB98BEA00893C8D /* argon2.c in Sources */,
-				3D648B2D2AB98BEA00893C8D /* encoding.c in Sources */,
+				3D69DDFC2AD441D100C6C900 /* KyberPrivateKey.swift in Sources */,
 				3DC5DED92858CB58007364FF /* RsaPublicKey.swift in Sources */,
 				3D0EB1F926F49E36002E5102 /* AppDelegate.swift in Sources */,
 				3D3AFAE3285B0C350077F302 /* MobileSystemfacade.swift in Sources */,
 				3D9B129A27216DE0002B46A1 /* Response.swift in Sources */,
 				3D9B12AC27219623002B46A1 /* NotificationSessionKey.swift in Sources */,
+				3D0E44BC2B3C3CE500F933A1 /* fips202.c in Sources */,
+				3D4E3CA828EC63A6001FA9D1 /* sqlite3.c in Sources */,
+				3D648B282AB98BEA00893C8D /* ref.c in Sources */,
+				3D648B2A2AB98BEA00893C8D /* core.c in Sources */,
+				3D0E44B62B3C3CE500F933A1 /* kem_kyber_1024.c in Sources */,
+				3D648B262AB98BEA00893C8D /* blake2b.c in Sources */,
+				3D648B212AB98BEA00893C8D /* thread.c in Sources */,
+				3D648B2C2AB98BEA00893C8D /* argon2.c in Sources */,
+				3D648B2D2AB98BEA00893C8D /* encoding.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1884,6 +2156,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3D3B516629376E9E00C1B7DA /* ShareUtilsTest.swift in Sources */,
+				3D9CDA4F2AD58266000B9267 /* KyberTest.swift in Sources */,
 				3D6A0AEA212C1701001CD791 /* CompatibilityTest.m in Sources */,
 				3D63A0E5233D0C1400D05259 /* TUTLogTest.m in Sources */,
 				3D4A426129B638D700B10451 /* AlarmManagerTest.swift in Sources */,
@@ -1914,6 +2187,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		3D6715322B4412D600E26D7D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3D67152D2B4410B200E26D7D /* liboqs header setup */;
+			targetProxy = 3D6715312B4412D600E26D7D /* PBXContainerItemProxy */;
+		};
 		3DD4A09D20F8C6260086EB36 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 3DD4A08220F8C6240086EB36 /* tutanota */;
@@ -2442,6 +2720,44 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		3D67152E2B4410B300E26D7D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_STYLE = Automatic;
+				DEBUGGING_SYMBOLS = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				OTHER_CFLAGS = "";
+				OTHER_LDFLAGS = "";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		3D67152F2B4410B300E26D7D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_STYLE = Automatic;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_FAST_MATH = YES;
+				OTHER_CFLAGS = "";
+				OTHER_LDFLAGS = "";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
 		3DD4A0A220F8C6260086EB36 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2569,7 +2885,11 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = JKCH89Z3M9;
-				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = "SQLITE_HAS_CODEC=1";
+				GCC_PREPROCESSOR_DEFINITIONS = "";
+				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = (
+					"SQLITE_HAS_CODEC=1",
+					"OQS_ENABLE_KEM_kyber_1024=1",
+				);
 				HEADER_SEARCH_PATHS = (
 					"\"$(TARGET_BUILD_DIR)/usr/local/lib/include\"",
 					"\"$(BUILT_PRODUCTS_DIR)\"",
@@ -2592,8 +2912,14 @@
 					"-DSQLITE_TEMP_STORE=3",
 					"-DSQLCIPHER_CRYPTO_CC",
 					"-DNDEBUG",
+					"-DKYBER_K=4",
+					"-DOQS_VERSION_TEXT=\\\"whatever\\\"",
+					"-DOQS_ENABLE_KEM_kyber_1024=1",
+					"-DOQS_DIST_BUILD=1",
+					"-DOQS_ENABLE_KEM_KYBER=1",
 				);
 				OTHER_LDFLAGS = "";
+				OTHER_SWIFT_FLAGS = "";
 				"OTHER_SWIFT_FLAGS[arch=*]" = "-D DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = de.tutao.tutanota;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2617,7 +2943,11 @@
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = JKCH89Z3M9;
-				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = "SQLITE_HAS_CODEC=1";
+				GCC_PREPROCESSOR_DEFINITIONS = "";
+				"GCC_PREPROCESSOR_DEFINITIONS[arch=*]" = (
+					"SQLITE_HAS_CODEC=1",
+					"OQS_ENABLE_KEM_kyber_1024=1",
+				);
 				HEADER_SEARCH_PATHS = (
 					"\"$(TARGET_BUILD_DIR)/usr/local/lib/include\"",
 					"\"$(BUILT_PRODUCTS_DIR)\"",
@@ -2640,8 +2970,14 @@
 					"-DSQLITE_TEMP_STORE=3",
 					"-DSQLCIPHER_CRYPTO_CC",
 					"-DNDEBUG",
+					"-DOQS_ENABLE_KEM_kyber_1024=1",
+					"-DOQS_DIST_BUILD=1",
+					"-DOQS_VERSION_TEXT=\\\"whatever\\\"",
+					"-DKYBER_K=4",
+					"-DOQS_ENABLE_KEM_KYBER=1",
 				);
 				OTHER_LDFLAGS = "";
+				OTHER_SWIFT_FLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = de.tutao.tutanota;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE = "";
@@ -2713,6 +3049,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JKCH89Z3M9;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "\"${PROJECT_DIR}/tutanota/include\"/**";
 				INFOPLIST_FILE = TutanotaShareExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TutanotaShareExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2023 Tutao GmbH. All rights reserved.";
@@ -2748,6 +3085,7 @@
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = JKCH89Z3M9;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "\"${PROJECT_DIR}/tutanota/include\"/**";
 				INFOPLIST_FILE = TutanotaShareExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TutanotaShareExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2023 Tutao GmbH. All rights reserved.";
@@ -2775,6 +3113,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3D6715302B4410B300E26D7D /* Build configuration list for PBXLegacyTarget "liboqs header setup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3D67152E2B4410B300E26D7D /* Debug */,
+				3D67152F2B4410B300E26D7D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		3DD4A07E20F8C6240086EB36 /* Build configuration list for PBXProject "tutanota" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

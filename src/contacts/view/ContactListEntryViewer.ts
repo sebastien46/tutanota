@@ -55,13 +55,31 @@ export class ContactListEntryViewer implements Component<ContactListEntryViewerA
 							m(Button, {
 								label: "createContact_action",
 								click: () => {
-									let newContact = createContact()
-									let newAddress = createContactMailAddress({
-										type: ContactAddressType.WORK,
-										customTypeName: "",
-										address: attrs.entry.emailAddress,
+									let newContact = createContact({
+										mailAddresses: [
+											createContactMailAddress({
+												type: ContactAddressType.WORK,
+												customTypeName: "",
+												address: attrs.entry.emailAddress,
+											}),
+										],
+										oldBirthdayAggregate: null,
+										autoTransmitPassword: "",
+										addresses: [],
+										birthdayIso: null,
+										comment: "",
+										company: "",
+										firstName: "",
+										lastName: "",
+										nickname: null,
+										oldBirthdayDate: null,
+										phoneNumbers: [],
+										photo: null,
+										role: "",
+										presharedPassword: null,
+										socialIds: [],
+										title: null,
 									})
-									newContact.mailAddresses.push(newAddress)
 									attrs.contactCreate(newContact)
 								},
 								type: ButtonType.Primary,

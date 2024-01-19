@@ -26,8 +26,8 @@ import { AuthDataProvider } from "../facades/UserFacade"
 import { LoginIncompleteError } from "../../common/error/LoginIncompleteError.js"
 import { BlobServerUrl } from "../../entities/storage/TypeRefs.js"
 import { BlobAccessTokenFacade } from "../facades/BlobAccessTokenFacade.js"
-import { isOfflineError } from "../../common/utils/ErrorCheckUtils.js"
 import { Aes256Key } from "@tutao/tutanota-crypto"
+import { isOfflineError } from "../../common/utils/ErrorUtils.js"
 
 assertWorkerOrNode()
 
@@ -146,9 +146,19 @@ export class EntityRestClient implements EntityRestInterface {
 		const entity = JSON.parse(json)
 		const migratedEntity = await this._crypto.applyMigrations(typeRef, entity)
 
-		const sessionKey = ownerKey
-			? this._crypto.resolveSessionKeyWithOwnerKey(migratedEntity, ownerKey)
-			: await this._crypto.resolveSessionKey(typeModel, migratedEntity)
+		let sessionKey: Aes128Key | Aes256Key | null = null
+		try {
+			sessionKey = ownerKey
+				? this._crypto.resolveSessionKeyWithOwnerKey(migratedEntity, ownerKey)
+				: await this._crypto.resolveSessionKey(typeModel, migratedEntity)
+		} catch (e) {
+			if (e instanceof SessionKeyNotFoundError) {
+				console.log("could not resolve session key for instance of type", typeRef)
+			} else {
+				throw e
+			}
+		}
+
 		const instance = await this.instanceMapper.decryptAndMapToInstance<T>(typeModel, migratedEntity, sessionKey)
 		return this._crypto.applyMigrationsForInstance(instance)
 	}
@@ -275,7 +285,7 @@ export class EntityRestClient implements EntityRestInterface {
 				sessionKey = await this._crypto.resolveSessionKey(model, instance)
 			} catch (e) {
 				if (e instanceof SessionKeyNotFoundError) {
-					console.log("could not resolve session key", e)
+					console.log("could not resolve session key", e, e.message, e.stack)
 					sessionKey = null // will result in _errors being set on the instance
 				} else {
 					throw e

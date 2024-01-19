@@ -1,29 +1,25 @@
 import m, { ChildArray, Children, Component, Vnode } from "mithril"
-import { theme } from "../../gui/theme"
 import { px, size } from "../../gui/size"
 import { DAY_IN_MILLIS, downcast, getEndOfDay, getStartOfDay, mapNullable, neverNull, numberRange } from "@tutao/tutanota-utils"
-import {
-	eventEndsAfterDay,
-	EventLayoutMode,
-	eventStartsBefore,
-	expandEvent,
-	formatEventTime,
-	getEventColor,
-	getTimeTextFormatForLongEvent,
-	getTimeZone,
-	hasAlarmsForTheUser,
-	layOutEvents,
-	TEMPORARY_EVENT_OPACITY,
-} from "../date/CalendarUtils"
+import { eventEndsAfterDay, eventStartsBefore, getTimeTextFormatForLongEvent, getTimeZone, hasAlarmsForTheUser } from "../date/CalendarUtils"
 import { CalendarEventBubble } from "./CalendarEventBubble"
 import type { CalendarEvent } from "../../api/entities/tutanota/TypeRefs.js"
 import { Time } from "../date/Time.js"
 import { getPosAndBoundsFromMouseEvent } from "../../gui/base/GuiUtils"
-import { getTimeFromMousePos } from "./CalendarGuiUtils"
+import {
+	EventLayoutMode,
+	expandEvent,
+	formatEventTime,
+	getEventColor,
+	getTimeFromMousePos,
+	layOutEvents,
+	TEMPORARY_EVENT_OPACITY,
+} from "../gui/CalendarGuiUtils.js"
 import type { CalendarEventBubbleClickHandler } from "./CalendarViewModel"
 import type { GroupColors } from "./CalendarView"
 import { styles } from "../../gui/styles"
 import { locator } from "../../api/main/MainLocator.js"
+import { CalendarTimeIndicator } from "./CalendarTimeIndicator.js"
 
 export type Attrs = {
 	onEventClicked: CalendarEventBubbleClickHandler
@@ -43,14 +39,14 @@ export const calendarDayTimes: Array<Time> = numberRange(0, 23).map((number) => 
 const allHoursHeight = size.calendar_hour_height * calendarDayTimes.length
 
 export class CalendarDayEventsView implements Component<Attrs> {
-	private _dayDom: HTMLElement | null = null
+	private dayDom: HTMLElement | null = null
 
 	view({ attrs }: Vnode<Attrs>): Children {
 		return m(
 			".col.rel",
 			{
 				oncreate: (vnode) => {
-					this._dayDom = vnode.dom as HTMLElement
+					this.dayDom = vnode.dom as HTMLElement
 					m.redraw()
 				},
 				onmousemove: (mouseEvent: MouseEvent) => {
@@ -72,13 +68,13 @@ export class CalendarDayEventsView implements Component<Attrs> {
 						},
 					}),
 				),
-				this._dayDom ? this._renderEvents(attrs, attrs.events) : null,
-				this._renderTimeIndicator(attrs),
+				this.dayDom ? this.renderEvents(attrs, attrs.events) : null,
+				this.renderTimeIndicator(attrs),
 			],
 		)
 	}
 
-	_renderTimeIndicator(attrs: Attrs): Children {
+	private renderTimeIndicator(attrs: Attrs): Children {
 		const now = new Date()
 
 		if (!attrs.displayTimeIndicator) {
@@ -86,38 +82,14 @@ export class CalendarDayEventsView implements Component<Attrs> {
 		}
 
 		const top = getTimeIndicatorPosition(now)
-		return [
-			m(".abs", {
-				"aria-hidden": "true",
-				style: {
-					top: px(top),
-					left: 0,
-					right: 0,
-					height: "2px",
-					background: theme.content_accent,
-				},
-			}),
-			m(".abs", {
-				"aria-hidden": "true",
-				style: {
-					top: px(top),
-					left: 0,
-					height: "12px",
-					width: "12px",
-					"border-radius": "50%",
-					background: theme.content_accent,
-					"margin-top": "-5px",
-					"margin-left": "-7px",
-				},
-			}),
-		]
+		return m(".abs", { style: { top: px(top), left: 0, right: 0 } }, m(CalendarTimeIndicator))
 	}
 
-	_renderEvents(attrs: Attrs, events: Array<CalendarEvent>): Children {
-		return layOutEvents(events, getTimeZone(), (columns) => this._renderColumns(attrs, columns), EventLayoutMode.TimeBasedColumn)
+	private renderEvents(attrs: Attrs, events: Array<CalendarEvent>): Children {
+		return layOutEvents(events, getTimeZone(), (columns) => this.renderColumns(attrs, columns), EventLayoutMode.TimeBasedColumn)
 	}
 
-	_renderEvent(attrs: Attrs, ev: CalendarEvent, columnIndex: number, columns: Array<Array<CalendarEvent>>, columnWidth: number): Children {
+	private renderEvent(attrs: Attrs, ev: CalendarEvent, columnIndex: number, columns: Array<Array<CalendarEvent>>, columnWidth: number): Children {
 		// If an event starts in the previous day or ends in the next, we want to clamp top/height to fit within just this day
 		const zone = getTimeZone()
 		const startOfEvent = eventStartsBefore(attrs.day, zone, ev) ? getStartOfDay(attrs.day) : ev.startTime
@@ -159,11 +131,11 @@ export class CalendarDayEventsView implements Component<Attrs> {
 		)
 	}
 
-	_renderColumns(attrs: Attrs, columns: Array<Array<CalendarEvent>>): ChildArray {
-		const columnWidth = neverNull(this._dayDom).clientWidth / columns.length
+	private renderColumns(attrs: Attrs, columns: Array<Array<CalendarEvent>>): ChildArray {
+		const columnWidth = neverNull(this.dayDom).clientWidth / columns.length
 		return columns.map((column, index) => {
 			return column.map((event) => {
-				return this._renderEvent(attrs, event, index, columns, Math.floor(columnWidth))
+				return this.renderEvent(attrs, event, index, columns, Math.floor(columnWidth))
 			})
 		})
 	}

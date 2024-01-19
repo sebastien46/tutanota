@@ -5,31 +5,19 @@ import {
 	filterInt,
 	findAllAndRemove,
 	findAndRemove,
+	getFirstOrThrow,
 	getFromMap,
 	getStartOfDay,
 	incrementDate,
 	insertIntoSortedArray,
-	isSameDay,
+	isNotNull,
 	isSameDayOfDate,
 	isValidDate,
 	neverNull,
-	numberRange,
 	TIMESTAMP_ZERO_YEAR,
-	typedValues,
 } from "@tutao/tutanota-utils"
-import {
-	AccountType,
-	CalendarAttendeeStatus,
-	defaultCalendarColor,
-	EndType,
-	EventTextTimeOption,
-	getWeekStart,
-	RepeatPeriod,
-	ShareCapability,
-	TimeFormat,
-	WeekStart,
-} from "../../api/common/TutanotaConstants"
-import { DateTime, Duration, DurationLikeObject, FixedOffsetZone, IANAZone } from "luxon"
+import { EndType, EventTextTimeOption, getWeekStart, RepeatPeriod, TimeFormat, WeekStart } from "../../api/common/TutanotaConstants"
+import { DateTime, DurationLikeObject, FixedOffsetZone, IANAZone } from "luxon"
 import {
 	CalendarEvent,
 	CalendarEventTypeRef,
@@ -38,40 +26,17 @@ import {
 	createCalendarRepeatRule,
 	UserSettingsGroupRoot,
 } from "../../api/entities/tutanota/TypeRefs.js"
-import {
-	CalendarEventTimes,
-	cleanMailAddress,
-	DAYS_SHIFTED_MS,
-	generateEventElementId,
-	isAllDayEvent,
-	isAllDayEventByTimes,
-} from "../../api/common/utils/CommonCalendarUtils"
-import { lang } from "../../misc/LanguageViewModel"
-import { formatDateTime, formatDateWithMonth, formatTime, timeStringFromParts } from "../../misc/Formatter"
-import { size } from "../../gui/size"
-import type { DateWrapper, RepeatRule } from "../../api/entities/sys/TypeRefs.js"
-import { createDateWrapper, User } from "../../api/entities/sys/TypeRefs.js"
-import { isColorLight } from "../../gui/base/Color"
-import type { GroupColors } from "../view/CalendarView"
+import { CalendarEventTimes, DAYS_SHIFTED_MS, generateEventElementId, isAllDayEvent, isAllDayEventByTimes } from "../../api/common/utils/CommonCalendarUtils"
+import type { RepeatRule } from "../../api/entities/sys/TypeRefs.js"
+import { createDateWrapper, DateWrapper, User } from "../../api/entities/sys/TypeRefs.js"
 import { isSameId } from "../../api/common/utils/EntityUtils"
 import type { Time } from "./Time.js"
-import type { SelectorItemList } from "../../gui/base/DropDownSelector.js"
 import type { CalendarInfo } from "../model/CalendarModel"
-import { assertMainOrNode } from "../../api/common/Env"
-import { ChildArray, Children } from "mithril"
 import { DateProvider } from "../../api/common/DateProvider"
-import { AllIcons } from "../../gui/base/Icon.js"
-import { Icons } from "../../gui/base/icons/Icons.js"
-import { EventType } from "./eventeditor/CalendarEventModel.js"
-import { hasCapabilityOnGroup } from "../../sharing/GroupUtils.js"
 import { EntityClient } from "../../api/common/EntityClient.js"
 import { CalendarEventUidIndexEntry } from "../../api/worker/facades/lazy/CalendarFacade.js"
 import { ParserError } from "../../misc/parsing/ParserCombinator.js"
-import { ProgrammingError } from "../../api/common/error/ProgrammingError.js"
 
-assertMainOrNode()
-export const CALENDAR_EVENT_HEIGHT: number = size.calendar_line_height + 2
-export const TEMPORARY_EVENT_OPACITY = 0.7
 export type CalendarTimeRange = {
 	start: number
 	end: number
@@ -101,21 +66,6 @@ export function generateUid(groupId: Id, timestamp: number): string {
 	return `${groupId}${timestamp}@tuta.com`
 }
 
-export function timeString(date: Date, amPm: boolean): string {
-	return timeStringFromParts(date.getHours(), date.getMinutes(), amPm)
-}
-
-export function timeStringInZone(date: Date, amPm: boolean, zone: string): string {
-	const { hour, minute } = DateTime.fromJSDate(date, {
-		zone,
-	})
-	return timeStringFromParts(hour, minute, amPm)
-}
-
-export function shouldDefaultToAmPmTimeFormat(): boolean {
-	return lang.code === "en"
-}
-
 /** get the timestamps of the start date and end date of the month the given date is in. */
 export function getMonthRange(date: Date, zone: string): CalendarTimeRange {
 	const startDateTime = DateTime.fromJSDate(date, {
@@ -131,6 +81,28 @@ export function getMonthRange(date: Date, zone: string): CalendarTimeRange {
 	const end = startDateTime
 		.plus({
 			month: 1,
+		})
+		.toJSDate()
+		.getTime()
+	return {
+		start,
+		end,
+	}
+}
+
+export function getDayRange(date: Date, zone: string): CalendarTimeRange {
+	const startDateTime = DateTime.fromJSDate(date, {
+		zone,
+	}).set({
+		hour: 0,
+		minute: 0,
+		second: 0,
+		millisecond: 0,
+	})
+	const start = startDateTime.toJSDate().getTime()
+	const end = startDateTime
+		.plus({
+			day: 1,
 		})
 		.toJSDate()
 		.getTime()
@@ -251,203 +223,14 @@ export class DefaultDateProvider implements DateProvider {
 }
 
 export function createRepeatRuleWithValues(frequency: RepeatPeriod, interval: number, timeZone: string = getTimeZone()): CalendarRepeatRule {
-	const rule = createCalendarRepeatRule()
-	rule.timeZone = timeZone
-	rule.frequency = frequency
-	rule.interval = String(interval)
-	return rule
-}
-
-export function colorForBg(color: string): string {
-	return isColorLight(color) ? "black" : "white"
-}
-
-export const enum EventLayoutMode {
-	/** Take event start and end times into account when laying out. */
-	TimeBasedColumn,
-	/** Each event is treated as if it would take the whole day when laying out. */
-	DayBasedColumn,
-}
-
-/**
- * Function which sorts events into the "columns" and "rows" and renders them using {@param renderer}.
- * Columns are abstract and can be actually the rows. A single column progresses in time while multiple columns can happen in parallel.
- * in one column on a single day (it will "stretch" events from the day start until the next day).
- */
-export function layOutEvents(
-	events: Array<CalendarEvent>,
-	zone: string,
-	renderer: (columns: Array<Array<CalendarEvent>>) => ChildArray,
-	layoutMode: EventLayoutMode,
-): ChildArray {
-	events.sort((e1, e2) => {
-		const e1Start = getEventStart(e1, zone)
-		const e2Start = getEventStart(e2, zone)
-		if (e1Start < e2Start) return -1
-		if (e1Start > e2Start) return 1
-		const e1End = getEventEnd(e1, zone)
-		const e2End = getEventEnd(e2, zone)
-		if (e1End < e2End) return -1
-		if (e1End > e2End) return 1
-		return 0
+	return createCalendarRepeatRule({
+		timeZone: timeZone,
+		frequency: frequency,
+		interval: String(interval),
+		endValue: null,
+		endType: "0",
+		excludedDates: [],
 	})
-	let lastEventEnding: Date | null = null
-	let lastEventStart: Date | null = null
-	let columns: Array<Array<CalendarEvent>> = []
-	const children: Array<Children> = []
-	// Cache for calculation events
-	const calcEvents = new Map()
-	for (const e of events) {
-		const calcEvent = getFromMap(calcEvents, e, () => getCalculationEvent(e, zone, layoutMode))
-		// Check if a new event group needs to be started
-		if (
-			lastEventEnding != null &&
-			lastEventStart != null &&
-			lastEventEnding <= calcEvent.startTime.getTime() &&
-			(layoutMode === EventLayoutMode.DayBasedColumn || !visuallyOverlaps(lastEventStart, lastEventEnding, calcEvent.startTime))
-		) {
-			// The latest event is later than any of the event in the
-			// current group. There is no overlap. Output the current
-			// event group and start a new event group.
-			children.push(...renderer(columns))
-			columns = [] // This starts new event group.
-
-			lastEventEnding = null
-			lastEventStart = null
-		}
-
-		// Try to place the event inside the existing columns
-		let placed = false
-
-		for (let i = 0; i < columns.length; i++) {
-			const col = columns[i]
-			const lastEvent = col[col.length - 1]
-			const lastCalcEvent = getFromMap(calcEvents, lastEvent, () => getCalculationEvent(lastEvent, zone, layoutMode))
-
-			if (
-				!collidesWith(lastCalcEvent, calcEvent) &&
-				(layoutMode === EventLayoutMode.DayBasedColumn || !visuallyOverlaps(lastCalcEvent.startTime, lastCalcEvent.endTime, calcEvent.startTime))
-			) {
-				col.push(e) // push real event here not calc event
-
-				placed = true
-				break
-			}
-		}
-
-		// It was not possible to place the event. Add a new column
-		// for the current event group.
-		if (!placed) {
-			columns.push([e])
-		}
-
-		// Remember the latest event end time and start time of the current group.
-		// This is later used to determine if a new groups starts.
-		if (lastEventEnding == null || lastEventEnding.getTime() < calcEvent.endTime.getTime()) {
-			lastEventEnding = calcEvent.endTime
-		}
-		if (lastEventStart == null || lastEventStart.getTime() < calcEvent.startTime.getTime()) {
-			lastEventStart = calcEvent.startTime
-		}
-	}
-	children.push(...renderer(columns))
-	return children
-}
-
-/** get an event that can be rendered to the screen. in day view, the event is returned as-is, otherwise it's stretched to cover each day
- * it occurs on completely. */
-function getCalculationEvent(event: CalendarEvent, zone: string, eventLayoutMode: EventLayoutMode): CalendarEvent {
-	if (eventLayoutMode === EventLayoutMode.DayBasedColumn) {
-		const calcEvent = clone(event)
-
-		if (isAllDayEvent(event)) {
-			calcEvent.startTime = getAllDayDateForTimezone(event.startTime, zone)
-			calcEvent.endTime = getAllDayDateForTimezone(event.endTime, zone)
-		} else {
-			calcEvent.startTime = getStartOfDayWithZone(event.startTime, zone)
-			calcEvent.endTime = getStartOfNextDayWithZone(event.endTime, zone)
-		}
-
-		return calcEvent
-	} else {
-		return event
-	}
-}
-
-/**
- * This function checks whether two events collide based on their start and end time
- * Assuming vertical columns with time going top-to-bottom, this would be true in these cases:
- *
- * case 1:
- * +-----------+
- * |           |
- * |           |   +----------+
- * +-----------+   |          |
- *                 |          |
- *                 +----------+
- * case 2:
- * +-----------+
- * |           |   +----------+
- * |           |   |          |
- * |           |   +----------+
- * +-----------+
- *
- * There could be a case where they are flipped vertically, but we don't have them because earlier events will be always first. so the "left" top edge will
- * always be "above" the "right" top edge.
- */
-function collidesWith(a: CalendarEvent, b: CalendarEvent): boolean {
-	return a.endTime.getTime() > b.startTime.getTime() && a.startTime.getTime() < b.endTime.getTime()
-}
-
-/**
- * Due to the minimum height for events they overlap if a short event is directly followed by another event,
- * therefore, we check whether the event height is less than the minimum height.
- *
- * This does not cover all the cases but handles the case when the second event starts right after the first one.
- */
-function visuallyOverlaps(firstEventStart: Date, firstEventEnd: Date, secondEventStart: Date): boolean {
-	// We are only interested in the height on the last day of the event because an event ending later will take up the whole column until the next day anyway.
-	const firstEventStartOnSameDay = isSameDay(firstEventStart, firstEventEnd) ? firstEventStart.getTime() : getStartOfDay(firstEventEnd).getTime()
-	const eventDurationMs = firstEventEnd.getTime() - firstEventStartOnSameDay
-	const eventDurationHours = eventDurationMs / (1000 * 60 * 60)
-	const height = eventDurationHours * size.calendar_hour_height - size.calendar_event_border
-	return firstEventEnd.getTime() === secondEventStart.getTime() && height < size.calendar_line_height
-}
-
-export function formatEventTime({ endTime, startTime }: CalendarEventTimes, showTime: EventTextTimeOption): string {
-	switch (showTime) {
-		case EventTextTimeOption.START_TIME:
-			return formatTime(startTime)
-
-		case EventTextTimeOption.END_TIME:
-			return ` - ${formatTime(endTime)}`
-
-		case EventTextTimeOption.START_END_TIME:
-			return `${formatTime(startTime)} - ${formatTime(endTime)}`
-
-		default:
-			throw new ProgrammingError(`Unknown time option: ${showTime}`)
-	}
-}
-
-export function expandEvent(ev: CalendarEvent, columnIndex: number, columns: Array<Array<CalendarEvent>>): number {
-	let colSpan = 1
-
-	for (let i = columnIndex + 1; i < columns.length; i++) {
-		let col = columns[i]
-
-		for (let j = 0; j < col.length; j++) {
-			let ev1 = col[j]
-
-			if (collidesWith(ev, ev1) || visuallyOverlaps(ev.startTime, ev.endTime, ev1.startTime)) {
-				return colSpan
-			}
-		}
-
-		colSpan++
-	}
-
-	return colSpan
 }
 
 /**
@@ -467,10 +250,6 @@ export function getDiffIn24hIntervals(a: Date, b: Date, zone?: string): number {
  */
 export function getDiffIn60mIntervals(a: Date, b: Date): number {
 	return Math.floor(DateTime.fromJSDate(b).diff(DateTime.fromJSDate(a), "hours").hours)
-}
-
-export function getEventColor(event: CalendarEvent, groupColors: GroupColors): string {
-	return (event._ownerGroup && groupColors.get(event._ownerGroup)) ?? defaultCalendarColor
 }
 
 export function getStartOfWeek(date: Date, firstDayOfWeekFromOffset: number): Date {
@@ -703,6 +482,103 @@ export function addDaysForRecurringEvent(
 }
 
 /**
+ * get all instances of all series in a list of event series progenitors that intersect with the given range.
+ * will return a sorted array of instances (by start time), interleaving the series if necessary.
+ *
+ */
+export function generateCalendarInstancesInRange(
+	progenitors: ReadonlyArray<CalendarEvent>,
+	range: CalendarTimeRange,
+	max: number = Infinity,
+	timeZone: string = getTimeZone(),
+): Array<CalendarEvent> {
+	const ret: Array<CalendarEvent> = []
+
+	const getNextCandidate = (
+		previousCandidate: CalendarEvent,
+		generator: Generator<{
+			startTime: Date
+			endTime: Date
+		}>,
+		excludedDates: Array<DateWrapper>,
+	) => {
+		const allDay = isAllDayEvent(previousCandidate)
+		const exclusions = allDay ? excludedDates.map(({ date }) => createDateWrapper({ date: getAllDayDateForTimezone(date, timeZone) })) : excludedDates
+		let current
+
+		// not using for-of because that automatically closes the generator
+		// when breaking or returning, and we want to suspend and resume iteration.
+		while (ret.length < max) {
+			current = generator.next()
+
+			if (current.done) break
+
+			let { startTime, endTime } = current.value
+			if (startTime.getTime() > range.end) break
+			// using "<=" because an all-day-event that lasts n days spans n+1 days,
+			// ending at midnight utc on the day after. So they seem to intersect
+			// the range if it starts on the day after the event ends.
+			if (endTime.getTime() <= range.start) continue
+
+			if (!isExcludedDate(startTime, exclusions)) {
+				const nextCandidate = clone(previousCandidate)
+				if (allDay) {
+					nextCandidate.startTime = getAllDayDateUTCFromZone(startTime, timeZone)
+					nextCandidate.endTime = getAllDayDateUTCFromZone(endTime, timeZone)
+				} else {
+					nextCandidate.startTime = new Date(startTime)
+					nextCandidate.endTime = new Date(endTime)
+				}
+				return nextCandidate
+			}
+		}
+
+		return null
+	}
+
+	// we need to have one candidate for each series and then check which one gets added first.
+	// if we added one, we advance the generator that generated it to the next candidate and repeat.
+	const generators: Array<{
+		generator: Generator<{ startTime: Date; endTime: Date }>
+		excludedDates: Array<DateWrapper>
+		nextCandidate: CalendarEvent
+	}> = progenitors
+		.map((p) => {
+			const generator = generateEventOccurrences(p, timeZone)
+			const excludedDates = p.repeatRule?.excludedDates ?? []
+			const nextCandidate = getNextCandidate(p, generator, excludedDates)
+			if (nextCandidate == null) return null
+			return {
+				excludedDates,
+				generator,
+				nextCandidate,
+			}
+		})
+		.filter(isNotNull)
+
+	while (generators.length > 0) {
+		// performance: put the smallest nextCandidate in front. we only change the first item in each iteration, so this should be quick to re-sort.
+		// still O(n²) in the best case >:(
+		// we might improve runtime here by re-inserting the new nextCandidate into the list manually using a linear or binary search instead of invoking
+		// sort.
+		// we can then also maintain an index to the first still-open generator instead of splicing out the first generator when it stops yielding instances.
+		generators.sort((a, b) => (a.nextCandidate?.startTime.getTime() ?? 0) - (b.nextCandidate?.startTime.getTime() ?? 0))
+		const first = getFirstOrThrow(generators)
+		const newNext = getNextCandidate(first.nextCandidate, first.generator, first.excludedDates)
+
+		ret.push(first.nextCandidate)
+
+		if (newNext == null) {
+			generators.splice(0, 1)
+			continue
+		}
+
+		first.nextCandidate = newNext
+	}
+	return ret
+}
+
+/**
  * Returns the end date of a repeating rule that can be used to display in the ui.
  *
  * The actual end date that is stored on the repeat rule is always one day behind the displayed end date:
@@ -727,16 +603,17 @@ export function getRepeatEndTimeForDisplay(repeatRule: RepeatRule, isAllDay: boo
 }
 
 /**
- * generates all event occurrences in chronological order
- * @param event the event to iterate occurrences on. must have a repeat rule
+ * generates all event occurrences in chronological order, including the progenitor.
+ * terminates once the end condition of the repeat rule is hit.
+ * @param event the event to iterate occurrences on.
  * @param timeZone
- * the end condition of the repeat rule is hit or the callback returns false.
  */
 function* generateEventOccurrences(event: CalendarEvent, timeZone: string): Generator<{ startTime: Date; endTime: Date }> {
 	const { repeatRule } = event
 
 	if (repeatRule == null) {
-		throw new Error("Invalid argument: event doesn't have a repeatRule" + JSON.stringify(event))
+		yield event
+		return
 	}
 
 	const frequency: RepeatPeriod = downcast(repeatRule.frequency)
@@ -908,145 +785,6 @@ export type CalendarMonth = {
 }
 
 /**
- * get an object representing the calendar month the given date is in.
- */
-export function getCalendarMonth(date: Date, firstDayOfWeekFromOffset: number, weekdayNarrowFormat: boolean): CalendarMonth {
-	const weeks: Array<Array<CalendarDay>> = [[]]
-	const calculationDate = getStartOfDay(date)
-	calculationDate.setDate(1)
-	const beginningOfMonth = new Date(calculationDate)
-	let currentYear = calculationDate.getFullYear()
-	let month = calculationDate.getMonth()
-	// add "padding" days
-	// getDay returns the day of the week (from 0 to 6) for the specified date (with first one being Sunday)
-	let firstDay
-
-	if (firstDayOfWeekFromOffset > calculationDate.getDay()) {
-		firstDay = calculationDate.getDay() + 7 - firstDayOfWeekFromOffset
-	} else {
-		firstDay = calculationDate.getDay() - firstDayOfWeekFromOffset
-	}
-
-	let dayCount
-	incrementDate(calculationDate, -firstDay)
-
-	for (dayCount = 0; dayCount < firstDay; dayCount++) {
-		weeks[0].push({
-			date: new Date(calculationDate),
-			day: calculationDate.getDate(),
-			month: calculationDate.getMonth(),
-			year: calculationDate.getFullYear(),
-			isPaddingDay: true,
-		})
-		incrementDate(calculationDate, 1)
-	}
-
-	// add actual days
-	while (calculationDate.getMonth() === month) {
-		if (weeks[0].length && dayCount % 7 === 0) {
-			// start new week
-			weeks.push([])
-		}
-
-		const dayInfo = {
-			date: new Date(currentYear, month, calculationDate.getDate()),
-			year: currentYear,
-			month: month,
-			day: calculationDate.getDate(),
-			isPaddingDay: false,
-		}
-		weeks[weeks.length - 1].push(dayInfo)
-		incrementDate(calculationDate, 1)
-		dayCount++
-	}
-
-	// add remaining "padding" days
-	while (dayCount < 42) {
-		if (dayCount % 7 === 0) {
-			weeks.push([])
-		}
-
-		weeks[weeks.length - 1].push({
-			day: calculationDate.getDate(),
-			year: calculationDate.getFullYear(),
-			month: calculationDate.getMonth(),
-			date: new Date(calculationDate),
-			isPaddingDay: true,
-		})
-		incrementDate(calculationDate, 1)
-		dayCount++
-	}
-
-	const weekdays: string[] = []
-	const weekdaysDate = new Date()
-	incrementDate(weekdaysDate, -weekdaysDate.getDay() + firstDayOfWeekFromOffset) // get first day of week
-
-	for (let i = 0; i < 7; i++) {
-		weekdays.push(weekdayNarrowFormat ? lang.formats.weekdayNarrow.format(weekdaysDate) : lang.formats.weekdayShort.format(weekdaysDate))
-		incrementDate(weekdaysDate, 1)
-	}
-
-	return {
-		beginningOfMonth,
-		weekdays,
-		weeks,
-	}
-}
-
-export function formatEventDuration(event: CalendarEventTimes, zone: string, includeTimezone: boolean): string {
-	if (isAllDayEvent(event)) {
-		const startTime = getEventStart(event, zone)
-		const startString = formatDateWithMonth(startTime)
-		const endTime = incrementByRepeatPeriod(getEventEnd(event, zone), RepeatPeriod.DAILY, -1, zone)
-
-		if (isSameDayOfDate(startTime, endTime)) {
-			return `${lang.get("allDay_label")}, ${startString}`
-		} else {
-			return `${lang.get("allDay_label")}, ${startString} - ${formatDateWithMonth(endTime)}`
-		}
-	} else {
-		const startString = formatDateTime(event.startTime)
-		let endString
-
-		if (isSameDay(event.startTime, event.endTime)) {
-			endString = formatTime(event.endTime)
-		} else {
-			endString = formatDateTime(event.endTime)
-		}
-
-		return `${startString} - ${endString} ${includeTimezone ? getTimeZone() : ""}`
-	}
-}
-
-export function calendarAttendeeStatusSymbol(status: CalendarAttendeeStatus): string {
-	switch (status) {
-		case CalendarAttendeeStatus.ADDED:
-		case CalendarAttendeeStatus.NEEDS_ACTION:
-			return ""
-
-		case CalendarAttendeeStatus.TENTATIVE:
-			return "?"
-
-		case CalendarAttendeeStatus.ACCEPTED:
-			return "✓"
-
-		case CalendarAttendeeStatus.DECLINED:
-			return "❌"
-
-		default:
-			throw new Error("Unknown calendar attendee status: " + status)
-	}
-}
-
-export const iconForAttendeeStatus: Record<CalendarAttendeeStatus, AllIcons> = Object.freeze({
-	[CalendarAttendeeStatus.ACCEPTED]: Icons.CircleCheckmark,
-	[CalendarAttendeeStatus.TENTATIVE]: Icons.CircleHelp,
-	[CalendarAttendeeStatus.DECLINED]: Icons.CircleReject,
-	[CalendarAttendeeStatus.NEEDS_ACTION]: Icons.CircleEmpty,
-	[CalendarAttendeeStatus.ADDED]: Icons.CircleEmpty,
-})
-
-/**
  *
  * https://www.kanzaki.com/docs/ical/sequence.html
  * The "Organizer" includes this property in an iCalendar object that it sends to an
@@ -1149,151 +887,10 @@ export function isEventBetweenDays(event: CalendarEvent, firstDay: Date, lastDay
 	return !(eventEndsBefore(firstDay, zone, event) || eventStartsAfter(endOfDay, zone, event))
 }
 
-export const createRepeatRuleFrequencyValues = (): SelectorItemList<RepeatPeriod | null> => {
-	return [
-		{
-			name: lang.get("calendarRepeatIntervalNoRepeat_label"),
-			value: null,
-		},
-		{
-			name: lang.get("calendarRepeatIntervalDaily_label"),
-			value: RepeatPeriod.DAILY,
-		},
-		{
-			name: lang.get("calendarRepeatIntervalWeekly_label"),
-			value: RepeatPeriod.WEEKLY,
-		},
-		{
-			name: lang.get("calendarRepeatIntervalMonthly_label"),
-			value: RepeatPeriod.MONTHLY,
-		},
-		{
-			name: lang.get("calendarRepeatIntervalAnnually_label"),
-			value: RepeatPeriod.ANNUALLY,
-		},
-	]
-}
-
-export const createRepeatRuleEndTypeValues = (): SelectorItemList<EndType> => {
-	return [
-		{
-			name: lang.get("calendarRepeatStopConditionNever_label"),
-			value: EndType.Never,
-		},
-		{
-			name: lang.get("calendarRepeatStopConditionOccurrences_label"),
-			value: EndType.Count,
-		},
-		{
-			name: lang.get("calendarRepeatStopConditionDate_label"),
-			value: EndType.UntilDate,
-		},
-	]
-}
-
-export const createIntervalValues = (): SelectorItemList<number> => numberRange(1, 256).map((n) => ({ name: String(n), value: n }))
-
-export function humanDescriptionForAlarmInterval<P>(value: AlarmInterval, locale: string): string {
-	if (value.value === 0) return lang.get("calendarReminderIntervalAtEventStart_label")
-
-	return Duration.fromObject(alarmIntervalToLuxonDurationLikeObject(value)).reconfigure({ locale: locale }).toHuman()
-}
-
-export const createAlarmIntervalItems = (locale: string): SelectorItemList<AlarmInterval> =>
-	typedValues(StandardAlarmInterval).map((value) => {
-		return {
-			value,
-			name: humanDescriptionForAlarmInterval(value, locale),
-		}
-	})
-
-export const createAttendingItems = (): SelectorItemList<CalendarAttendeeStatus> => [
-	{
-		name: lang.get("yes_label"),
-		value: CalendarAttendeeStatus.ACCEPTED,
-	},
-	{
-		name: lang.get("maybe_label"),
-		value: CalendarAttendeeStatus.TENTATIVE,
-	},
-	{
-		name: lang.get("no_label"),
-		value: CalendarAttendeeStatus.DECLINED,
-	},
-	{
-		name: lang.get("pending_label"),
-		value: CalendarAttendeeStatus.NEEDS_ACTION,
-		selectable: false,
-	},
-]
-
 export function getFirstDayOfMonth(d: Date): Date {
 	const date = new Date(d)
 	date.setDate(1)
 	return date
-}
-
-/**
- *  find out how we ended up with this event, which determines the capabilities we have with it.
- *  for shared events in calendar where we have read-write access, we can still only view events that have
- *  attendees, because we could not send updates after we edit something
- * @param existingEvent the event in question.
- * @param calendars a list of calendars that this user has access to.
- * @param ownMailAddresses the list of mail addresses this user might be using.
- * @param user the user accessing the event.
- */
-export function getEventType(
-	existingEvent: Partial<CalendarEvent>,
-	calendars: ReadonlyMap<Id, CalendarInfo>,
-	ownMailAddresses: ReadonlyArray<string>,
-	user: User,
-): EventType {
-	if (user.accountType === AccountType.EXTERNAL) {
-		return EventType.EXTERNAL
-	}
-
-	const existingOrganizer = existingEvent.organizer
-	const isOrganizer = existingOrganizer != null && ownMailAddresses.some((a) => cleanMailAddress(a) === existingOrganizer.address)
-
-	if (existingEvent._ownerGroup == null) {
-		if (existingOrganizer != null && !isOrganizer) {
-			// OwnerGroup is not set for events from file, but we also require an organizer to treat it as an invite.
-			return EventType.INVITE
-		} else {
-			// either the organizer exists and it's us, or the organizer does not exist and we can treat this as our event,
-			// like for newly created events.
-			return EventType.OWN
-		}
-	}
-
-	const calendarInfoForEvent = calendars.get(existingEvent._ownerGroup) ?? null
-
-	if (calendarInfoForEvent == null) {
-		// event has an ownergroup, but it's not in one of our calendars. this might actually be an error.
-		return EventType.SHARED_RO
-	}
-
-	if (calendarInfoForEvent.shared) {
-		const canWrite = hasCapabilityOnGroup(user, calendarInfoForEvent.group, ShareCapability.Write)
-		if (canWrite) {
-			const organizerAddress = cleanMailAddress(existingOrganizer?.address ?? "")
-			const wouldRequireUpdates: boolean =
-				existingEvent.attendees != null && existingEvent.attendees.some((a) => cleanMailAddress(a.address.address) !== organizerAddress)
-			return wouldRequireUpdates ? EventType.LOCKED : EventType.SHARED_RW
-		} else {
-			return EventType.SHARED_RO
-		}
-	}
-
-	//For an event in a personal calendar there are 3 options
-	if (existingOrganizer == null || existingEvent.attendees?.length === 0 || isOrganizer) {
-		// 1. we are the organizer of the event or the event does not have an organizer yet
-		// 2. we are not the organizer and the event does not have guests. it was created by someone we shared our calendar with (also considered our own event)
-		return EventType.OWN
-	} else {
-		// 3. the event is an invitation that has another organizer and/or attendees.
-		return EventType.INVITE
-	}
 }
 
 /**
@@ -1306,7 +903,7 @@ export async function resolveCalendarEventProgenitor(calendarEvent: CalendarEven
 }
 
 /** clip the range start-end to the range given by min-max. if the result would have length 0, null is returned. */
-function clipRanges(start: number, end: number, min: number, max: number): CalendarTimeRange | null {
+export function clipRanges(start: number, end: number, min: number, max: number): CalendarTimeRange | null {
 	const res = {
 		start: Math.max(start, min),
 		end: Math.min(end, max),
@@ -1344,24 +941,6 @@ export type AlarmInterval = Readonly<{
 }>
 
 /**
- * Converts db representation of alarm to a runtime one.
- */
-export function parseAlarmInterval(serialized: string): AlarmInterval {
-	const matched = serialized.match(/^(\d+)([MHDW])$/)
-	if (matched) {
-		const [_, digits, unit] = matched
-		const value = filterInt(digits)
-		if (isNaN(value)) {
-			throw new ParserError(`Invalid value: ${value}`)
-		} else {
-			return { value, unit: unit as AlarmIntervalUnit }
-		}
-	} else {
-		throw new ParserError(`Invalid alarm interval: ${serialized}`)
-	}
-}
-
-/**
  * Converts runtime representation of an alarm into a db one.
  */
 export function serializeAlarmInterval(interval: AlarmInterval): string {
@@ -1381,36 +960,40 @@ export function alarmIntervalToLuxonDurationLikeObject(alarmInterval: AlarmInter
 	}
 }
 
-export const createCustomRepeatRuleUnitValues = (): SelectorItemList<AlarmIntervalUnit | null> => {
-	return [
-		{
-			name: humanDescriptionForAlarmIntervalUnit(AlarmIntervalUnit.MINUTE),
-			value: AlarmIntervalUnit.MINUTE,
-		},
-		{
-			name: humanDescriptionForAlarmIntervalUnit(AlarmIntervalUnit.HOUR),
-			value: AlarmIntervalUnit.HOUR,
-		},
-		{
-			name: humanDescriptionForAlarmIntervalUnit(AlarmIntervalUnit.DAY),
-			value: AlarmIntervalUnit.DAY,
-		},
-		{
-			name: humanDescriptionForAlarmIntervalUnit(AlarmIntervalUnit.WEEK),
-			value: AlarmIntervalUnit.WEEK,
-		},
-	]
+/**
+ * compare two lists of dates that are sorted from earliest to latest. return true if they are equivalent.
+ */
+export function areExcludedDatesEqual(e1: ReadonlyArray<DateWrapper>, e2: ReadonlyArray<DateWrapper>): boolean {
+	if (e1.length !== e2.length) return false
+	return e1.every(({ date }, i) => e2[i].date.getTime() === date.getTime())
 }
 
-export function humanDescriptionForAlarmIntervalUnit(unit: AlarmIntervalUnit): string {
-	switch (unit) {
-		case AlarmIntervalUnit.MINUTE:
-			return lang.get("calendarReminderIntervalUnitMinutes_label")
-		case AlarmIntervalUnit.HOUR:
-			return lang.get("calendarReminderIntervalUnitHours_label")
-		case AlarmIntervalUnit.DAY:
-			return lang.get("calendarReminderIntervalUnitDays_label")
-		case AlarmIntervalUnit.WEEK:
-			return lang.get("calendarReminderIntervalUnitWeeks_label")
+export function areRepeatRulesEqual(r1: CalendarRepeatRule | null, r2: CalendarRepeatRule | null): boolean {
+	return (
+		r1 === r2 ||
+		(r1?.endType === r2?.endType &&
+			r1?.endValue === r2?.endValue &&
+			r1?.frequency === r2?.frequency &&
+			r1?.interval === r2?.interval &&
+			/** r1?.timeZone === r2?.timeZone && we're ignoring time zone because it's not an observable change. */
+			areExcludedDatesEqual(r1?.excludedDates ?? [], r2?.excludedDates ?? []))
+	)
+}
+
+/**
+ * Converts db representation of alarm to a runtime one.
+ */
+export function parseAlarmInterval(serialized: string): AlarmInterval {
+	const matched = serialized.match(/^(\d+)([MHDW])$/)
+	if (matched) {
+		const [_, digits, unit] = matched
+		const value = filterInt(digits)
+		if (isNaN(value)) {
+			throw new ParserError(`Invalid value: ${value}`)
+		} else {
+			return { value, unit: unit as AlarmIntervalUnit }
+		}
+	} else {
+		throw new ParserError(`Invalid alarm interval: ${serialized}`)
 	}
 }

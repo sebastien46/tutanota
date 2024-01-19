@@ -1,9 +1,9 @@
 import m, { Child, Children, Component, Vnode } from "mithril"
-import { colorForBg } from "../date/CalendarUtils"
 import { px, size } from "../../gui/size"
 import { Icon } from "../../gui/base/Icon"
 import { Icons } from "../../gui/base/icons/Icons"
-import type { clickHandler } from "../../gui/base/GuiUtils"
+import type { ClickHandler } from "../../gui/base/GuiUtils"
+import { colorForBg } from "../gui/CalendarGuiUtils.js"
 
 export type CalendarEventBubbleAttrs = {
 	text: string
@@ -11,7 +11,7 @@ export type CalendarEventBubbleAttrs = {
 	color: string
 	hasAlarm: boolean
 	isAltered: boolean
-	click: clickHandler
+	click: ClickHandler
 	height?: number
 	noBorderRight?: boolean
 	noBorderLeft?: boolean

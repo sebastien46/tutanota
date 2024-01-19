@@ -2,6 +2,15 @@ import { assertMainOrNodeBoot } from "../api/common/Env"
 
 assertMainOrNodeBoot()
 
+export enum ErrorReportClientType {
+	Browser = "0",
+	Android = "1",
+	Ios = "2",
+	MacOS = "3",
+	Linux = "4",
+	Windows = "5",
+}
+
 export const enum BrowserType {
 	CHROME = "Chrome",
 	FIREFOX = "Firefox",
@@ -36,3 +45,5 @@ export type BrowserData = {
 	needsExplicitIDBIds: boolean
 	indexedDbSupported: boolean
 }
+
+export const companyTeamLabel = "Tuta Team"

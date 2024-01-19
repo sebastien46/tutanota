@@ -15,6 +15,7 @@ import {
 } from "../../../../../src/api/common/utils/EntityUtils.js"
 import { arrayOf, clone, downcast, isSameTypeRef, neverNull, TypeRef } from "@tutao/tutanota-utils"
 import {
+	BucketKeyTypeRef,
 	createBucketKey,
 	createCustomer,
 	createEntityUpdate,
@@ -26,7 +27,11 @@ import {
 	createUser,
 	CustomerTypeRef,
 	EntityUpdate,
+	EntityUpdateTypeRef,
 	ExternalUserReferenceTypeRef,
+	GroupMembershipTypeRef,
+	GroupRootTypeRef,
+	InstanceSessionKeyTypeRef,
 	PermissionTypeRef,
 	UserTypeRef,
 } from "../../../../../src/api/entities/sys/TypeRefs.js"
@@ -59,6 +64,7 @@ import { createEventElementId } from "../../../../../src/api/common/utils/Common
 import { InterWindowEventFacadeSendDispatcher } from "../../../../../src/native/common/generatedipc/InterWindowEventFacadeSendDispatcher.js"
 import { func, instance, matchers, object, replace, when } from "testdouble"
 import { SqlCipherFacade } from "../../../../../src/native/common/generatedipc/SqlCipherFacade.js"
+import { createTestEntity } from "../../../TestUtils.js"
 
 const { anything } = matchers
 
@@ -111,7 +117,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 		let userId: Id | null
 
 		let createUpdate = function (typeRef: TypeRef<any>, listId: Id, id: Id, operation: OperationType): EntityUpdate {
-			let eu = createEntityUpdate()
+			let eu = createTestEntity(EntityUpdateTypeRef)
 			eu.application = typeRef.app
 			eu.type = typeRef.type
 			eu.instanceListId = listId
@@ -125,14 +131,14 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 		}
 
 		let createBodyInstance = function (id, bodyText): MailBody {
-			let body = createMailBody()
+			let body = createTestEntity(MailBodyTypeRef)
 			body._id = createId(id)
 			body.text = bodyText
 			return body
 		}
 
 		let createMailInstance = function (listId, id, subject): Mail {
-			let mail = createMail()
+			let mail = createTestEntity(MailTypeRef)
 			mail._id = [listId, createId(id)]
 			mail.subject = subject ?? ""
 			return mail
@@ -185,8 +191,8 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 			const calendarEventIds = [0, 1, 2, 3, 4, 5, 6].map((n) => createEventElementId(timestamp, n))
 
 			o("writes batch meta on entity update", async function () {
-				const contact1 = createContact({ _id: [contactListId1, id1] })
-				const contact2 = createContact({ _id: [contactListId1, id2] })
+				const contact1 = createTestEntity(ContactTypeRef, { _id: [contactListId1, id1] })
+				const contact2 = createTestEntity(ContactTypeRef, { _id: [contactListId1, id2] })
 
 				const batch = [
 					createUpdate(ContactTypeRef, contactListId1, id1, OperationType.CREATE),
@@ -206,15 +212,15 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 				verify(putLastBatchIdForGroup(groupId, batchId))
 			})
 
-			o.spec("postMultiple", async function () {
+			o.spec("postMultiple", function () {
 				o.beforeEach(async function () {
 					await storage.setNewRangeForList(ContactTypeRef, contactListId1, id1, id7)
 					await storage.setNewRangeForList(ContactTypeRef, contactListId2, id1, id7)
 					//when using offline calendar ids are always in cache range
 				})
 				o("entity events received should call loadMultiple when receiving updates from a postMultiple", async function () {
-					const contact1 = createContact({ _id: [contactListId1, id1] })
-					const contact2 = createContact({ _id: [contactListId1, id2] })
+					const contact1 = createTestEntity(ContactTypeRef, { _id: [contactListId1, id1] })
+					const contact2 = createTestEntity(ContactTypeRef, { _id: [contactListId1, id2] })
 
 					const batch = [
 						createUpdate(ContactTypeRef, contactListId1, id1, OperationType.CREATE),
@@ -238,8 +244,8 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 				if (name === "offline") {
 					// in the other case storage is an EphemeralCache which doesn't use custom handlers or caches calendar events.
 					o("entity events received should call loadMultiple when receiving updates from a postMultiple with CustomCacheHandler", async function () {
-						const event1 = createCalendarEvent({ _id: [calendarEventListId, calendarEventIds[0]] })
-						const event2 = createCalendarEvent({ _id: [calendarEventListId, calendarEventIds[1]] })
+						const event1 = createTestEntity(CalendarEventTypeRef, { _id: [calendarEventListId, calendarEventIds[0]] })
+						const event2 = createTestEntity(CalendarEventTypeRef, { _id: [calendarEventListId, calendarEventIds[1]] })
 						// We only consider events to be in the range if we do actually have correct range
 						await storage.setNewRangeForList(CalendarEventTypeRef, calendarEventListId, CUSTOM_MIN_ID, CUSTOM_MAX_ID)
 
@@ -280,14 +286,14 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 						if (isSameTypeRef(typeRef, ContactTypeRef)) {
 							o(elementId).equals(id2)
 							return Promise.resolve(
-								createContact({
+								createTestEntity(ContactTypeRef, {
 									_id: [neverNull(listId), elementId],
 								}),
 							)
 						} else if (isSameTypeRef(typeRef, CustomerTypeRef)) {
 							o(["id5", "id6", "id7"].includes(elementId)).equals(true)
 							return Promise.resolve(
-								createCustomer({
+								createTestEntity(CustomerTypeRef, {
 									_id: elementId,
 								}),
 							)
@@ -299,30 +305,30 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 							if (listId === contactListId1) {
 								o(ids).deepEquals(["id1", "id2"])
 								return Promise.resolve([
-									createContact({
+									createTestEntity(ContactTypeRef, {
 										_id: [listId, id1],
 									}),
-									createContact({
+									createTestEntity(ContactTypeRef, {
 										_id: [listId, id2],
 									}),
 								])
 							} else if (listId === calendarEventListId) {
 								o(ids).deepEquals([calendarEventIds[0], calendarEventIds[1]])
 								return Promise.resolve([
-									createCalendarEvent({
+									createTestEntity(CalendarEventTypeRef, {
 										_id: [calendarEventListId, calendarEventIds[0]],
 									}),
-									createCalendarEvent({
+									createTestEntity(CalendarEventTypeRef, {
 										_id: [calendarEventListId, calendarEventIds[1]],
 									}),
 								])
 							} else if (listId === contactListId2) {
 								o(ids).deepEquals(["id3", "id4"])
 								return Promise.resolve([
-									createContact({
+									createTestEntity(ContactTypeRef, {
 										_id: [listId, "id3"],
 									}),
-									createContact({
+									createTestEntity(ContactTypeRef, {
 										_id: [listId, "id4"],
 									}),
 								])
@@ -382,10 +388,10 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 						if (listId === contactListId1) {
 							o(ids).deepEquals(["id1", "id2"])
 							return Promise.resolve([
-								createContact({
+								createTestEntity(ContactTypeRef, {
 									_id: [listId, id1],
 								}),
-								createContact({
+								createTestEntity(ContactTypeRef, {
 									_id: [listId, id2],
 								}),
 							])
@@ -430,7 +436,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 						if (isSameTypeRef(typeRef, ContactTypeRef)) {
 							if (listId === contactListId1) {
 								o(ids).deepEquals(["id1", "id2"])
-								return Promise.resolve([createContact({ _id: [listId, id1] })])
+								return Promise.resolve([createTestEntity(ContactTypeRef, { _id: [listId, id1] })])
 							}
 						}
 						throw new Error("should not be reached")
@@ -463,14 +469,14 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 							if (listId === contactListId1) {
 								o(ids).deepEquals(["id1"])
 								return Promise.resolve([
-									createContact({
+									createTestEntity(ContactTypeRef, {
 										_id: [listId, id1],
 									}),
 								])
 							} else if (listId === contactListId2) {
 								o(ids).deepEquals(["id4"])
 								return Promise.resolve([
-									createContact({
+									createTestEntity(ContactTypeRef, {
 										_id: [listId, "id4"],
 									}),
 								])
@@ -506,7 +512,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 							if (listId === contactListId1) {
 								o(ids).deepEquals(["id1"])
 								return Promise.resolve([
-									createContact({
+									createTestEntity(ContactTypeRef, {
 										_id: [listId, id1],
 									}),
 								])
@@ -618,9 +624,9 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 			})
 			o("Mail should not be loaded when a move event is received - update bucket key", async function () {
 				const instance = createMailInstance("listId1", "id1", "henlo")
-				instance.bucketKey = createBucketKey({
+				instance.bucketKey = createTestEntity(BucketKeyTypeRef, {
 					bucketEncSessionKeys: [
-						createInstanceSessionKey({
+						createTestEntity(InstanceSessionKeyTypeRef, {
 							instanceList: "listId1",
 							instanceId: getElementId(instance),
 						}),
@@ -721,7 +727,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 			})
 
 			o("delete Mail deletes MailDetailsBlob", async function () {
-				const mailDetailsBlob = createMailDetailsBlob({ _id: ["archiveId", "blobId"] })
+				const mailDetailsBlob = createTestEntity(MailDetailsBlobTypeRef, { _id: ["archiveId", "blobId"] })
 				const mail = createMailInstance("listId1", "id1", "mail 1")
 				mail.mailDetails = mailDetailsBlob._id
 
@@ -774,18 +780,18 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 				o(mails).deepEquals([originalMails[0], originalMails[2]])
 			})
 
-			o.spec("membership changes", async function () {
+			o.spec("membership changes", function () {
 				o("no membership change does not delete an entity and lastUpdateBatchIdPerGroup", async function () {
 					const userId = "userId"
 					const calendarGroupId = "calendarGroupId"
-					const initialUser = createUser({
+					const initialUser = createTestEntity(UserTypeRef, {
 						_id: userId,
 						memberships: [
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "mailShipId",
 								groupType: GroupType.Mail,
 							}),
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "calendarShipId",
 								group: calendarGroupId,
 								groupType: GroupType.Calendar,
@@ -799,7 +805,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 					await storage.put(initialUser)
 
 					const eventId: IdTuple = ["eventListId", "eventId"]
-					const event = createCalendarEvent({
+					const event = createTestEntity(CalendarEventTypeRef, {
 						_id: eventId,
 						_ownerGroup: calendarGroupId,
 					})
@@ -817,14 +823,14 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 				o("membership change deletes an element entity and lastUpdateBatchIdPerGroup", async function () {
 					const userId = "userId"
 					const calendarGroupId = "calendarGroupId"
-					const initialUser = createUser({
+					const initialUser = createTestEntity(UserTypeRef, {
 						_id: userId,
 						memberships: [
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "mailShipId",
 								groupType: GroupType.Mail,
 							}),
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "calendarShipId",
 								group: calendarGroupId,
 								groupType: GroupType.Calendar,
@@ -834,10 +840,10 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 
 					await storage.put(initialUser)
 
-					const updatedUser = createUser({
+					const updatedUser = createTestEntity(UserTypeRef, {
 						_id: userId,
 						memberships: [
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "mailShipId",
 								groupType: GroupType.Mail,
 							}),
@@ -848,7 +854,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 					when(entityRestClient.load(UserTypeRef, userId)).thenResolve(updatedUser)
 
 					const groupRootId = "groupRootId"
-					const groupRoot = createGroupRoot({
+					const groupRoot = createTestEntity(GroupRootTypeRef, {
 						_id: groupRootId,
 						_ownerGroup: calendarGroupId,
 					})
@@ -866,14 +872,14 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 				o("membership change deletes a list entity and lastUpdateBatchIdPerGroup", async function () {
 					const userId = "userId"
 					const calendarGroupId = "calendarGroupId"
-					const initialUser = createUser({
+					const initialUser = createTestEntity(UserTypeRef, {
 						_id: userId,
 						memberships: [
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "mailShipId",
 								groupType: GroupType.Mail,
 							}),
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "calendarShipId",
 								group: calendarGroupId,
 								groupType: GroupType.Calendar,
@@ -883,10 +889,10 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 
 					await storage.put(initialUser)
 
-					const updatedUser = createUser({
+					const updatedUser = createTestEntity(UserTypeRef, {
 						_id: userId,
 						memberships: [
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "mailShipId",
 								groupType: GroupType.Mail,
 							}),
@@ -897,7 +903,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 					when(entityRestClient.load(UserTypeRef, userId)).thenResolve(updatedUser)
 
 					const eventId: IdTuple = ["eventListId", "eventId"]
-					const event = createCalendarEvent({
+					const event = createTestEntity(CalendarEventTypeRef, {
 						_id: eventId,
 						_ownerGroup: calendarGroupId,
 					})
@@ -917,14 +923,14 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 				o("membership change but for another user does nothing", async function () {
 					const userId = "userId"
 					const calendarGroupId = "calendarGroupId"
-					const initialUser = createUser({
+					const initialUser = createTestEntity(UserTypeRef, {
 						_id: userId,
 						memberships: [
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "mailShipId",
 								groupType: GroupType.Mail,
 							}),
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "calendarShipId",
 								group: calendarGroupId,
 								groupType: GroupType.Calendar,
@@ -934,10 +940,10 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 
 					await storage.put(initialUser)
 
-					const updatedUser = createUser({
+					const updatedUser = createTestEntity(UserTypeRef, {
 						_id: userId,
 						memberships: [
-							createGroupMembership({
+							createTestEntity(GroupMembershipTypeRef, {
 								_id: "mailShipId",
 								groupType: GroupType.Mail,
 							}),
@@ -948,7 +954,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 					when(entityRestClient.load(UserTypeRef, userId)).thenResolve(updatedUser)
 
 					const eventId: IdTuple = ["eventListId", "eventId"]
-					const event = createCalendarEvent({
+					const event = createTestEntity(CalendarEventTypeRef, {
 						_id: eventId,
 						_ownerGroup: calendarGroupId,
 					})
@@ -1236,7 +1242,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 		})
 
 		o("custom id range is not stored", async function () {
-			let ref = clone(createExternalUserReference())
+			let ref = clone(createTestEntity(ExternalUserReferenceTypeRef))
 			ref._id = ["listId1", stringToCustomId("custom")]
 			const loadRange = spy(function (typeRef, listId, start, count, reverse) {
 				o(isSameTypeRef(typeRef, ExternalUserReferenceTypeRef)).equals(true)
@@ -1512,7 +1518,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 		})
 		o("load passes same parameters to entityRestClient", async function () {
 			const contactId: IdTuple = [createId("0"), createId("1")]
-			const contact = createContact({
+			const contact = createTestEntity(ContactTypeRef, {
 				_id: contactId,
 				firstName: "greg",
 			})
@@ -1542,7 +1548,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 		})
 		o("single entity is cached after being loaded", async function () {
 			const contactId: IdTuple = [createId("0"), createId("1")]
-			const contactOnTheServer = createContact({
+			const contactOnTheServer = createTestEntity(ContactTypeRef, {
 				_id: contactId,
 				firstName: "greg",
 			})
@@ -1565,12 +1571,12 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 		o("A new range request for a nonexistent range should initialize that range", async function () {
 			const loadRange = spy(function (typeRef, listId, ...an) {
 				return [
-					createContact({ _id: [listId, createId("1")] }),
-					createContact({ _id: [listId, createId("2")] }),
-					createContact({ _id: [listId, createId("3")] }),
-					createContact({ _id: [listId, createId("4")] }),
-					createContact({ _id: [listId, createId("5")] }),
-					createContact({ _id: [listId, createId("6")] }),
+					createTestEntity(ContactTypeRef, { _id: [listId, createId("1")] }),
+					createTestEntity(ContactTypeRef, { _id: [listId, createId("2")] }),
+					createTestEntity(ContactTypeRef, { _id: [listId, createId("3")] }),
+					createTestEntity(ContactTypeRef, { _id: [listId, createId("4")] }),
+					createTestEntity(ContactTypeRef, { _id: [listId, createId("5")] }),
+					createTestEntity(ContactTypeRef, { _id: [listId, createId("6")] }),
 				]
 			})
 
@@ -1585,7 +1591,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 
 		o("single entity is not cached if it is an ignored entity", async function () {
 			const permissionId: IdTuple = [createId("0"), createId("1")]
-			const permissionOnTheServer = createPermission({
+			const permissionOnTheServer = createTestEntity(PermissionTypeRef, {
 				_id: permissionId,
 			})
 			const client = downcast<EntityRestClient>({
@@ -1603,7 +1609,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 		o.spec("no user id", function () {
 			o("get", async function () {
 				userId = null
-				entityRestClient.load = spy(async () => createContact({ _id: ["listId", "id"] })) as EntityRestClient["load"]
+				entityRestClient.load = spy(async () => createTestEntity(ContactTypeRef, { _id: ["listId", "id"] })) as EntityRestClient["load"]
 				await cache.load(ContactTypeRef, ["listId", "id"])
 				o(entityRestClient.load.callCount).equals(1)
 			})
@@ -1611,7 +1617,7 @@ export function testEntityRestCache(name: string, getStorage: (userId: Id) => Pr
 			o("put", async function () {
 				userId = null
 				entityRestClient.setup = spy(async () => "id")
-				await cache.setup("listId", createContact({ _id: ["listId", "id"] }))
+				await cache.setup("listId", createTestEntity(ContactTypeRef, { _id: ["listId", "id"] }))
 				o(entityRestClient.setup.callCount).equals(1)
 			})
 		})

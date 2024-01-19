@@ -11,7 +11,7 @@ import type { MailAddressFacade } from "./facades/lazy/MailAddressFacade.js"
 import type { CustomerFacade } from "./facades/lazy/CustomerFacade.js"
 import type { CounterFacade } from "./facades/lazy/CounterFacade.js"
 import { EventBusClient } from "./EventBusClient"
-import { assertWorkerOrNode, getWebsocketBaseUrl, isAdminClient, isBrowser, isOfflineStorageAvailable, isTest } from "../common/Env"
+import { assertWorkerOrNode, getWebsocketBaseUrl, isAdminClient, isAndroidApp, isBrowser, isIOSApp, isOfflineStorageAvailable, isTest } from "../common/Env"
 import { Const } from "../common/TutanotaConstants"
 import type { BrowserData } from "../../misc/ClientConstants"
 import type { CalendarFacade } from "./facades/lazy/CalendarFacade.js"
@@ -63,6 +63,8 @@ import { ConnectionError, ServiceUnavailableError } from "../common/error/RestEr
 import { SessionType } from "../common/SessionType.js"
 import { Argon2idFacade, NativeArgon2idFacade, WASMArgon2idFacade } from "./facades/Argon2idFacade.js"
 import { DomainConfigProvider } from "../common/DomainConfigProvider.js"
+import { KyberFacade, NativeKyberFacade, WASMKyberFacade } from "./facades/KyberFacade.js"
+import { PQFacade } from "./facades/PQFacade.js"
 
 assertWorkerOrNode()
 
@@ -77,6 +79,8 @@ export type WorkerLocatorType = {
 	cachingEntityClient: EntityClient
 	eventBusClient: EventBusClient
 	rsa: RsaImplementation
+	kyberFacade: KyberFacade
+	pqFacade: PQFacade
 	entropyFacade: EntropyFacade
 	blobAccessToken: BlobAccessTokenFacade
 
@@ -177,6 +181,14 @@ export async function initLocator(worker: WorkerImpl, browserData: BrowserData) 
 		return new Indexer(entityRestClient, mainInterface.infoMessageHandler, browserData, locator.cache as DefaultEntityRestCache, await locator.mail())
 	})
 
+	if (isIOSApp() || isAndroidApp()) {
+		locator.kyberFacade = new NativeKyberFacade(new NativeCryptoFacadeSendDispatcher(worker))
+	} else {
+		locator.kyberFacade = new WASMKyberFacade()
+	}
+
+	locator.pqFacade = new PQFacade(locator.kyberFacade)
+
 	locator.crypto = new CryptoFacade(
 		locator.user,
 		locator.cachingEntityClient,
@@ -185,6 +197,7 @@ export async function initLocator(worker: WorkerImpl, browserData: BrowserData) 
 		locator.serviceExecutor,
 		locator.instanceMapper,
 		new OwnerEncSessionKeysUpdateQueue(locator.user, locator.serviceExecutor),
+		locator.pqFacade,
 	)
 
 	const loginListener: LoginListener = {
@@ -243,7 +256,7 @@ export async function initLocator(worker: WorkerImpl, browserData: BrowserData) 
 	locator.search = lazyMemoized(async () => {
 		const { SearchFacade } = await import("./search/SearchFacade.js")
 		const indexer = await locator.indexer()
-		const suggestionFacades = [indexer._contact.suggestionFacade, indexer._groupInfo.suggestionFacade, indexer._whitelabelChildIndexer.suggestionFacade]
+		const suggestionFacades = [indexer._contact.suggestionFacade]
 		return new SearchFacade(locator.user, indexer.db, indexer._mail, suggestionFacades, browserData, locator.cachingEntityClient)
 	})
 	locator.counters = lazyMemoized(async () => {
@@ -287,6 +300,7 @@ export async function initLocator(worker: WorkerImpl, browserData: BrowserData) 
 			await locator.booking(),
 			locator.crypto,
 			mainInterface.operationProgressTracker,
+			locator.pqFacade,
 		)
 	})
 	const aesApp = new AesApp(new NativeCryptoFacadeSendDispatcher(worker), random)
@@ -302,6 +316,7 @@ export async function initLocator(worker: WorkerImpl, browserData: BrowserData) 
 			locator.instanceMapper,
 			locator.crypto,
 			locator.blobAccessToken,
+			cache,
 		)
 	})
 	locator.mail = lazyMemoized(async () => {

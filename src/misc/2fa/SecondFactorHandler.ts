@@ -6,8 +6,7 @@ import { OperationType, SessionState } from "../../api/common/TutanotaConstants"
 import { lang } from "../LanguageViewModel"
 import { neverNull } from "@tutao/tutanota-utils"
 import { NotFoundError } from "../../api/common/error/RestError"
-import type { EntityUpdateData, EventController } from "../../api/main/EventController"
-import { isUpdateForTypeRef } from "../../api/main/EventController"
+import type { EventController } from "../../api/main/EventController"
 import { isSameId } from "../../api/common/utils/EntityUtils"
 import { assertMainOrNode } from "../../api/common/Env"
 import type { EntityClient } from "../../api/common/EntityClient"
@@ -15,6 +14,7 @@ import { WebauthnClient } from "./webauthn/WebauthnClient"
 import { SecondFactorAuthDialog } from "./SecondFactorAuthDialog"
 import type { LoginFacade } from "../../api/worker/facades/LoginFacade"
 import { DomainConfigProvider } from "../../api/common/DomainConfigProvider.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
 
@@ -137,6 +137,9 @@ export class SecondFactorHandler {
 					createSecondFactorAuthData({
 						session: session._id,
 						type: null, // Marker for confirming another session
+						otpCode: null,
+						u2f: null,
+						webauthn: null,
 					}),
 				)
 

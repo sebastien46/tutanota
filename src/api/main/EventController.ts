@@ -1,38 +1,18 @@
-import { downcast, identity, isSameTypeRefByAttr, noOp, remove, TypeRef } from "@tutao/tutanota-utils"
+import { downcast, identity, noOp } from "@tutao/tutanota-utils"
 import type { LoginController } from "./LoginController"
-import type { OperationType } from "../common/TutanotaConstants"
 import stream from "mithril/stream"
 import Stream from "mithril/stream"
 import { assertMainOrNode } from "../common/Env"
 import { EntityUpdate, WebsocketCounterData } from "../entities/sys/TypeRefs"
-import { SomeEntity } from "../common/EntityTypes.js"
-import { isSameId } from "../common/utils/EntityUtils.js"
+import { EntityUpdateData } from "../common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
-export type EntityUpdateData = {
-	application: string
-	type: string
-	instanceListId: string
-	instanceId: string
-	operation: OperationType
-}
-export type EntityEventsListener = (updates: ReadonlyArray<EntityUpdateData>, eventOwnerGroupId: Id) => Promise<any>
-
-export function isUpdateForTypeRef(typeRef: TypeRef<unknown>, update: EntityUpdateData): boolean {
-	return isSameTypeRefByAttr(typeRef, update.application, update.type)
-}
-
-export function isUpdateFor<T extends SomeEntity>(entity: T, update: EntityUpdateData): boolean {
-	const typeRef = entity._type as TypeRef<T>
-	return (
-		isUpdateForTypeRef(typeRef, update) &&
-		(update.instanceListId === "" ? isSameId(update.instanceId, entity._id) : isSameId([update.instanceListId, update.instanceId], entity._id))
-	)
-}
 
 export type ExposedEventController = Pick<EventController, "onEntityUpdateReceived" | "onCountersUpdateReceived">
 
 const TAG = "[EventController]"
+
+export type EntityEventsListener = (updates: ReadonlyArray<EntityUpdateData>, eventOwnerGroupId: Id) => Promise<unknown>
 
 export class EventController {
 	private countersStream: Stream<WebsocketCounterData> = stream()

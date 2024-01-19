@@ -16,13 +16,13 @@ import { ExpanderButton, ExpanderPanel } from "../gui/base/Expander"
 import stream from "mithril/stream"
 import Stream from "mithril/stream"
 import { TextField } from "../gui/base/TextField.js"
-import type { EntityUpdateData } from "../api/main/EventController"
-import { isUpdateForTypeRef } from "../api/main/EventController"
+
 import { showNotAvailableForFreeDialog } from "../misc/SubscriptionDialogs"
 import { getCleanedMailAddress } from "../misc/parsing/MailAddressParser"
 import { locator } from "../api/main/MainLocator"
 import { IconButton, IconButtonAttrs } from "../gui/base/IconButton.js"
 import { ButtonSize } from "../gui/base/ButtonSize.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../api/common/utils/EntityUpdateUtils.js"
 
 type IdentifierRowAttrs = {
 	name: string
@@ -170,7 +170,7 @@ export class IdentifierListViewer {
 	}
 
 	private getCurrentIdentifier(): string | null {
-		return isApp() || isDesktop() ? locator.pushService.getPushIdentifier() : null
+		return isApp() || isDesktop() ? locator.pushService.getLoadedPushIdentifier() : null
 	}
 
 	_showAddNotificationEmailAddressDialog(user: User) {
@@ -210,6 +210,9 @@ export class IdentifierListViewer {
 			identifier: assertNotNull(getCleanedMailAddress(mailAddress)),
 			language: lang.code,
 			pushServiceType: PushServiceType.EMAIL,
+			lastUsageTime: new Date(),
+			lastNotificationDate: null,
+			disabled: false,
 		})
 
 		let p = locator.entityClient.setup(assertNotNull(user.pushIdentifierList).list, pushIdentifier)

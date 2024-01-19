@@ -18,7 +18,7 @@ import { DesktopTray } from "./tray/DesktopTray"
 import { log } from "./DesktopLog"
 import { UpdaterWrapper } from "./UpdaterWrapper"
 import { ElectronNotificationFactory } from "./NotificatonFactory"
-import { buildSecretStorage } from "./sse/SecretStorage"
+import { preselectGnomeLibsecret, SafeStorageSecretStorage } from "./sse/SecretStorage"
 import fs from "node:fs"
 import { DesktopIntegrator, getDesktopIntegratorForPlatform } from "./integration/DesktopIntegrator"
 import net from "node:net"
@@ -27,7 +27,7 @@ import { LocalShortcutManager } from "./electron-localshortcut/LocalShortcut"
 import { cryptoFns } from "./CryptoFns"
 import { DesktopConfigMigrator } from "./config/migrations/DesktopConfigMigrator"
 import { DesktopKeyStoreFacade } from "./DesktopKeyStoreFacade.js"
-import { AlarmSchedulerImpl } from "../calendar/date/AlarmScheduler"
+import { AlarmScheduler } from "../calendar/date/AlarmScheduler.js"
 import { SchedulerImpl } from "../api/common/utils/Scheduler.js"
 import { DesktopThemeFacade } from "./DesktopThemeFacade"
 import { BuildConfigKey, DesktopConfigKey } from "./config/ConfigKeys"
@@ -60,7 +60,6 @@ import { DefaultDateProvider } from "../calendar/date/CalendarUtils.js"
 import { OfflineDbRefCounter } from "./db/OfflineDbRefCounter.js"
 import { WorkerSqlCipher } from "./db/WorkerSqlCipher.js"
 import { TempFs } from "./files/TempFs.js"
-import { WASMArgon2idFacade } from "../api/worker/facades/Argon2idFacade.js"
 
 /**
  * Should be injected during build time.
@@ -136,7 +135,8 @@ if (opts.registerAsMailHandler && opts.unregisterAsMailHandler) {
 async function createComponents(): Promise<Components> {
 	const en = (await import("../translations/en.js")).default
 	lang.init(en)
-	const secretStorage = await buildSecretStorage(electron, fs, path)
+	preselectGnomeLibsecret(electron)
+	const secretStorage = new SafeStorageSecretStorage(electron, fs, path)
 	const keyStoreFacade = new DesktopKeyStoreFacade(secretStorage, desktopCrypto)
 	const configMigrator = new DesktopConfigMigrator(desktopCrypto, keyStoreFacade, electron)
 	const conf = new DesktopConfig(configMigrator, keyStoreFacade, desktopCrypto)
@@ -172,14 +172,16 @@ async function createComponents(): Promise<Components> {
 			try {
 				await db.openDb(userId, key)
 			} catch (e) {
+				log.warn("failed to open db for", userId, e)
 				if (!retry) throw e
-				console.log("retrying")
+				log.debug("retrying")
 				await this.delete(userId)
 				return this.create(userId, key, false)
 			}
 			return db
 		},
 		async delete(userId: string): Promise<void> {
+			log.debug("deleting db for", userId)
 			const dbPath = makeDbPath(userId)
 			// force to suppress ENOENT which is not a problem.
 			// maxRetries should reduce EBUSY
@@ -191,13 +193,23 @@ async function createComponents(): Promise<Components> {
 
 	const wm = new WindowManager(conf, tray, notifier, electron, shortcutManager, appIcon)
 	const themeFacade = new DesktopThemeFacade(conf, wm, electron.nativeTheme)
-	const alarmScheduler = new AlarmSchedulerImpl(dateProvider, new SchedulerImpl(dateProvider, global, global))
+	const alarmScheduler = new AlarmScheduler(dateProvider, new SchedulerImpl(dateProvider, global, global))
 	const desktopAlarmScheduler = new DesktopAlarmScheduler(wm, notifier, alarmStorage, desktopCrypto, alarmScheduler)
 	desktopAlarmScheduler.rescheduleAll().catch((e) => {
 		log.error("Could not reschedule alarms", e)
 		return sse.resetStoredState()
 	})
 	const webDialogController = new WebDialogController()
+
+	// Insert or remove the icon when the 'run in background' setting is changed
+	conf.on(DesktopConfigKey.runAsTrayApp, async (value: boolean) => {
+		if (value) {
+			await tray.create()
+			await tray.update(notifier)
+		} else {
+			tray.destroy()
+		}
+	})
 
 	tray.setWindowManager(wm)
 	const sse = new DesktopSseClient(app, conf, notifier, wm, desktopAlarmScheduler, desktopNet, desktopCrypto, alarmStorage, lang)

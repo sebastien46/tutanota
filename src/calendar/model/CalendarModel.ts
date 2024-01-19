@@ -1,9 +1,9 @@
-import type { DeferredObject, Require } from "@tutao/tutanota-utils"
-import { assertNotNull, clone, defer, downcast, filterInt, getFromMap, LazyLoaded } from "@tutao/tutanota-utils"
+import type { $Promisable, DeferredObject, Require } from "@tutao/tutanota-utils"
+import { assertNotNull, clone, defer, downcast, filterInt, getFromMap, isSameDay, symmetricDifference } from "@tutao/tutanota-utils"
 import { CalendarMethod, FeatureType, GroupType, OperationType } from "../../api/common/TutanotaConstants"
-import type { EntityUpdateData } from "../../api/main/EventController"
-import { EventController, isUpdateForTypeRef } from "../../api/main/EventController"
-import type { AlarmInfo, Group, GroupInfo, User, UserAlarmInfo } from "../../api/entities/sys/TypeRefs.js"
+
+import { EventController } from "../../api/main/EventController"
+import type { Group, GroupInfo, User, UserAlarmInfo } from "../../api/entities/sys/TypeRefs.js"
 import {
 	createDateWrapper,
 	createMembershipRemoveData,
@@ -29,28 +29,30 @@ import type { ParsedCalendarData } from "../export/CalendarImporter"
 import { ParserError } from "../../misc/parsing/ParserCombinator"
 import { ProgressTracker } from "../../api/main/ProgressTracker"
 import type { IProgressMonitor } from "../../api/common/utils/ProgressMonitor"
+import { NoopProgressMonitor } from "../../api/common/utils/ProgressMonitor"
 import { EntityClient } from "../../api/common/EntityClient"
 import type { MailModel } from "../../mail/model/MailModel"
 import { elementIdPart, getElementId, isSameId, listIdPart, removeTechnicalFields } from "../../api/common/utils/EntityUtils"
-import type { AlarmScheduler } from "../date/AlarmScheduler"
+import type { AlarmScheduler } from "../date/AlarmScheduler.js"
 import type { Notifications } from "../../gui/Notifications"
 import m from "mithril"
 import type { CalendarEventInstance, CalendarEventProgenitor, CalendarFacade } from "../../api/worker/facades/lazy/CalendarFacade.js"
-import { CachingMode, CalendarEventAlteredInstance, CalendarEventUidIndexEntry } from "../../api/worker/facades/lazy/CalendarFacade.js"
+import { AlarmInfoTemplate, CachingMode, CalendarEventAlteredInstance, CalendarEventUidIndexEntry } from "../../api/worker/facades/lazy/CalendarFacade.js"
 import { IServiceExecutor } from "../../api/common/ServiceRequest"
 import { MembershipService } from "../../api/entities/sys/Services"
 import { FileController } from "../../file/FileController"
 import { findAttendeeInAddresses } from "../../api/common/utils/CommonCalendarUtils.js"
-import { TutanotaError } from "../../api/common/error/TutanotaError.js"
+import { TutanotaError } from "@tutao/tutanota-error"
 import { SessionKeyNotFoundError } from "../../api/common/error/SessionKeyNotFoundError.js"
+import Stream from "mithril/stream"
+import { ObservableLazyLoaded } from "../../api/common/utils/ObservableLazyLoaded.js"
+import { UserController } from "../../api/main/UserController.js"
+import { formatDateWithWeekdayAndTime, formatTime } from "../../misc/Formatter.js"
+import { EntityUpdateData, isUpdateFor, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 const TAG = "[CalendarModel]"
 export type CalendarInfo = {
 	groupRoot: CalendarGroupRoot
-	// We use LazyLoaded so that we don't get races for loading these events which is
-	// 1. Good because loading them twice is not optimal
-	// 2. Event identity is required by some functions (e.g. when determining week events)
-	longEvents: LazyLoaded<Array<CalendarEvent>>
 	groupInfo: GroupInfo
 	group: Group
 	shared: boolean
@@ -68,6 +70,18 @@ export class CalendarModel {
 	private readonly userAlarmToAlarmInfo: Map<string, string> = new Map()
 	private readonly fileIdToSkippedCalendarEventUpdates: Map<Id, CalendarEventUpdate> = new Map()
 
+	private readProgressMonitor: Generator<IProgressMonitor>
+
+	/**
+	 * Map from group id to CalendarInfo
+	 */
+	private readonly calendarInfos = new ObservableLazyLoaded<ReadonlyMap<Id, CalendarInfo>>(() => {
+		const monitor: IProgressMonitor = this.readProgressMonitor.next().value
+		const calendarInfoPromise = this.loadOrCreateCalendarInfo(monitor)
+		monitor.completed()
+		return calendarInfoPromise
+	}, new Map())
+
 	constructor(
 		private readonly notifications: Notifications,
 		private readonly alarmScheduler: () => Promise<AlarmScheduler>,
@@ -81,18 +95,26 @@ export class CalendarModel {
 		private readonly fileController: FileController,
 		private readonly zone: string,
 	) {
-		if (isApp()) return
-		eventController.addEntityListener((updates) => this.entityEventsReceived(updates))
+		this.readProgressMonitor = oneShotProgressMonitorGenerator(progressTracker, logins.getUserController())
+		eventController.addEntityListener((updates, eventOwnerGroupId) => this.entityEventsReceived(updates, eventOwnerGroupId))
 	}
 
-	async createEvent(event: CalendarEvent, alarmInfos: ReadonlyArray<AlarmInfo>, zone: string, groupRoot: CalendarGroupRoot): Promise<void> {
+	getCalendarInfos(): Promise<ReadonlyMap<Id, CalendarInfo>> {
+		return this.calendarInfos.getAsync()
+	}
+
+	getCalendarInfosStream(): Stream<ReadonlyMap<Id, CalendarInfo>> {
+		return this.calendarInfos.stream
+	}
+
+	async createEvent(event: CalendarEvent, alarmInfos: ReadonlyArray<AlarmInfoTemplate>, zone: string, groupRoot: CalendarGroupRoot): Promise<void> {
 		await this.doCreate(event, zone, groupRoot, alarmInfos)
 	}
 
 	/** Update existing event when time did not change */
 	async updateEvent(
 		newEvent: CalendarEvent,
-		newAlarms: ReadonlyArray<AlarmInfo>,
+		newAlarms: ReadonlyArray<AlarmInfoTemplate>,
 		zone: string,
 		groupRoot: CalendarGroupRoot,
 		existingEvent: CalendarEvent,
@@ -125,7 +147,7 @@ export class CalendarModel {
 	}
 
 	/** Load map from group/groupRoot ID to the calendar info */
-	async loadCalendarInfos(progressMonitor: IProgressMonitor): Promise<ReadonlyMap<Id, CalendarInfo>> {
+	private async loadCalendarInfos(progressMonitor: IProgressMonitor): Promise<ReadonlyMap<Id, CalendarInfo>> {
 		const user = this.logins.getUserController().user
 
 		const calendarMemberships = user.memberships.filter((m) => m.groupType === GroupType.Calendar)
@@ -154,7 +176,6 @@ export class CalendarModel {
 			calendarInfos.set(groupRoot._id, {
 				groupRoot,
 				groupInfo,
-				longEvents: new LazyLoaded(() => this.entityClient.loadAll(CalendarEventTypeRef, groupRoot.longEvents), []),
 				group: group,
 				shared: !isSameId(group.user, user._id),
 			})
@@ -168,12 +189,12 @@ export class CalendarModel {
 		return calendarInfos
 	}
 
-	async loadOrCreateCalendarInfo(progressMonitor: IProgressMonitor): Promise<ReadonlyMap<Id, CalendarInfo>> {
-		const { findPrivateCalendar } = await import("../date/CalendarUtils")
-		const calendarInfo = await this.loadCalendarInfos(progressMonitor)
+	private async loadOrCreateCalendarInfo(progressMonitor: IProgressMonitor): Promise<ReadonlyMap<Id, CalendarInfo>> {
+		const { findPrivateCalendar } = await import("../date/CalendarUtils.js")
+		const calendarInfos = await this.loadCalendarInfos(progressMonitor)
 
-		if (!this.logins.isInternalUserLoggedIn() || findPrivateCalendar(calendarInfo)) {
-			return calendarInfo
+		if (!this.logins.isInternalUserLoggedIn() || findPrivateCalendar(calendarInfos)) {
+			return calendarInfos
 		} else {
 			await this.createCalendar("", null)
 			return await this.loadCalendarInfos(progressMonitor)
@@ -190,9 +211,10 @@ export class CalendarModel {
 		if (color != null) {
 			const { userSettingsGroupRoot } = this.logins.getUserController()
 
-			const newGroupSettings = Object.assign(createGroupSettings(), {
+			const newGroupSettings = createGroupSettings({
 				group: group._id,
 				color: color,
+				name: null,
 			})
 			userSettingsGroupRoot.groupSettings.push(newGroupSettings)
 			await this.entityClient.update(userSettingsGroupRoot)
@@ -203,7 +225,7 @@ export class CalendarModel {
 		event: CalendarEvent,
 		zone: string,
 		groupRoot: CalendarGroupRoot,
-		alarmInfos: ReadonlyArray<AlarmInfo>,
+		alarmInfos: ReadonlyArray<AlarmInfoTemplate>,
 		existingEvent?: CalendarEvent,
 	): Promise<void> {
 		// If the event was copied it might still carry some fields for re-encryption. We can't reuse them.
@@ -245,6 +267,28 @@ export class CalendarModel {
 		for (const invite of invites) {
 			await this.handleCalendarEventUpdate(invite)
 		}
+	}
+
+	/**
+	 * Get calendar infos, creating a new calendar info if none exist
+	 * Not async because we want to return the result directly if it is available when called
+	 * otherwise we return a promise
+	 */
+	getCalendarInfosCreateIfNeeded(): $Promisable<ReadonlyMap<Id, CalendarInfo>> {
+		if (this.calendarInfos.isLoaded() && this.calendarInfos.getLoaded().size > 0) {
+			return this.calendarInfos.getLoaded()
+		}
+
+		return Promise.resolve().then(async () => {
+			const calendars = await this.calendarInfos.getAsync()
+
+			if (calendars.size > 0) {
+				return calendars
+			} else {
+				await this.createCalendar("", null)
+				return this.calendarInfos.reload()
+			}
+		})
 	}
 
 	private async getCalendarDataForUpdate(fileId: IdTuple): Promise<ParsedCalendarData | null> {
@@ -398,7 +442,7 @@ export class CalendarModel {
 		sender: string,
 		method: string,
 		updateEvent: Require<"uid", CalendarEvent>,
-		updateAlarms: Array<AlarmInfo>,
+		updateAlarms: Array<AlarmInfoTemplate>,
 		target: CalendarEventUidIndexEntry,
 	): Promise<void> {
 		const updateEventTime = updateEvent.recurrenceId?.getTime()
@@ -443,7 +487,7 @@ export class CalendarModel {
 	 * @param updateEvent the event that contains the new version of dbEvent. */
 	private async processCalendarUpdate(dbTarget: CalendarEventUidIndexEntry, dbEvent: CalendarEventInstance, updateEvent: CalendarEvent): Promise<void> {
 		console.log(TAG, "processing request for existing event instance")
-		const { repeatRuleWithExcludedAlteredInstances } = await import("../date/eventeditor/CalendarEventWhenModel.js")
+		const { repeatRuleWithExcludedAlteredInstances } = await import("../gui/eventeditor-model/CalendarEventWhenModel.js")
 		// some providers do not increment the sequence for all edit operations (like google when changing the summary)
 		// we'd rather apply the same update too often than miss some, and this enables us to update our own status easily
 		// without having to increment the sequence.
@@ -475,10 +519,10 @@ export class CalendarModel {
 	private async processCalendarAccept(
 		dbTarget: CalendarEventUidIndexEntry,
 		updateEvent: Require<"uid", CalendarEvent>,
-		alarms: Array<AlarmInfo>,
+		alarms: Array<AlarmInfoTemplate>,
 	): Promise<void> {
 		console.log(TAG, "processing new instance request")
-		const { repeatRuleWithExcludedAlteredInstances } = await import("../date/eventeditor/CalendarEventWhenModel.js")
+		const { repeatRuleWithExcludedAlteredInstances } = await import("../gui/eventeditor-model/CalendarEventWhenModel.js")
 		if (updateEvent.recurrenceId != null && dbTarget.progenitor != null && dbTarget.progenitor.repeatRule != null) {
 			// request for a new altered instance. we'll try adding the exclusion for this instance to the progenitor if possible
 			// since not all calendar apps add altered instances to the list of exclusions.
@@ -610,11 +654,14 @@ export class CalendarModel {
 		return this.calendarFacade.getEventsByUid(uid)
 	}
 
-	private async entityEventsReceived(updates: ReadonlyArray<EntityUpdateData>): Promise<void> {
+	private async entityEventsReceived(updates: ReadonlyArray<EntityUpdateData>, eventOwnerGroupId: Id): Promise<void> {
+		const calendarInfos = await this.calendarInfos.getAsync()
 		// We iterate over the alarms twice: once to collect them and to set the counter correctly and the second time to actually process them.
 		const alarmEventsToProcess: UserAlarmInfo[] = []
 		for (const entityEventData of updates) {
-			if (isUpdateForTypeRef(UserAlarmInfoTypeRef, entityEventData)) {
+			// apps handle alarms natively. this code is a candidate to move into
+			// a generic web/native alarm handler
+			if (isUpdateForTypeRef(UserAlarmInfoTypeRef, entityEventData) && !isApp()) {
 				if (entityEventData.operation === OperationType.CREATE) {
 					// Updates for UserAlarmInfo and CalendarEvent come in a
 					// separate batches and there's a race between loading of the
@@ -635,15 +682,14 @@ export class CalendarModel {
 							throw e
 						}
 					}
-				} else if (entityEventData.operation === OperationType.DELETE) {
+				} else if (entityEventData.operation === OperationType.DELETE && !isApp()) {
 					await this.cancelUserAlarmInfo(entityEventData.instanceId)
 				}
-			} else if (
-				isUpdateForTypeRef(CalendarEventTypeRef, entityEventData) &&
-				(entityEventData.operation === OperationType.CREATE || entityEventData.operation === OperationType.UPDATE)
-			) {
-				const deferredEvent = this.getPendingAlarmRequest(entityEventData.instanceId)
-				deferredEvent.deferred.resolve(undefined)
+			} else if (isUpdateForTypeRef(CalendarEventTypeRef, entityEventData)) {
+				if (entityEventData.operation === OperationType.CREATE || entityEventData.operation === OperationType.UPDATE) {
+					const deferredEvent = this.getPendingAlarmRequest(entityEventData.instanceId)
+					deferredEvent.deferred.resolve(undefined)
+				}
 			} else if (isUpdateForTypeRef(CalendarEventUpdateTypeRef, entityEventData) && entityEventData.operation === OperationType.CREATE) {
 				try {
 					const invite = await this.entityClient.load(CalendarEventUpdateTypeRef, [entityEventData.instanceListId, entityEventData.instanceId])
@@ -672,9 +718,27 @@ export class CalendarModel {
 						this.fileIdToSkippedCalendarEventUpdates.delete(entityEventData.instanceId)
 					}
 				}
+			} else if (this.logins.getUserController().isUpdateForLoggedInUserInstance(entityEventData, eventOwnerGroupId)) {
+				const calendarMemberships = this.logins.getUserController().getCalendarMemberships()
+				const oldGroupIds = new Set(calendarInfos.keys())
+				const newGroupIds = new Set(calendarMemberships.map((m) => m.group))
+				const diff = symmetricDifference(oldGroupIds, newGroupIds)
+
+				if (diff.size !== 0) {
+					this.calendarInfos.reload()
+				}
+			} else if (isUpdateForTypeRef(GroupInfoTypeRef, entityEventData)) {
+				// the batch does not belong to that group so we need to find if we actually care about the related GroupInfo
+				for (const { groupInfo } of calendarInfos.values()) {
+					if (isUpdateFor(groupInfo, entityEventData)) {
+						this.calendarInfos.reload()
+						break
+					}
+				}
 			}
 		}
 
+		// in the apps, this array is guaranteed to be empty.
 		for (const userAlarmInfo of alarmEventsToProcess) {
 			const { listId, elementId } = userAlarmInfo.alarmInfo.calendarRef
 			const deferredEvent = this.getPendingAlarmRequest(elementId)
@@ -712,7 +776,8 @@ export class CalendarModel {
 	private scheduleUserAlarmInfo(event: CalendarEvent, userAlarmInfo: UserAlarmInfo, scheduler: AlarmScheduler): void {
 		this.userAlarmToAlarmInfo.set(getElementId(userAlarmInfo), userAlarmInfo.alarmInfo.alarmIdentifier)
 
-		scheduler.scheduleAlarm(event, userAlarmInfo.alarmInfo, event.repeatRule, (title, body) => {
+		scheduler.scheduleAlarm(event, userAlarmInfo.alarmInfo, event.repeatRule, (eventTime, summary) => {
+			const { title, body } = formatNotificationForDisplay(eventTime, summary)
 			this.notifications.showNotification(
 				title,
 				{
@@ -755,4 +820,35 @@ class NoOwnerEncSessionKeyForCalendarEventError extends TutanotaError {
 	constructor(message: string) {
 		super("NoOwnerEncSessionKeyForCalendarEventError", message)
 	}
+}
+
+/**
+ * yield the given monitor one time and then switch to noOp monitors forever
+ */
+function* oneShotProgressMonitorGenerator(progressTracker: ProgressTracker, userController: UserController): Generator<IProgressMonitor> {
+	// load all calendars. if there is no calendar yet, create one
+	// we load three instances per calendar / CalendarGroupRoot / GroupInfo / Group
+	const workPerCalendar = 3
+	const totalWork = userController.getCalendarMemberships().length * workPerCalendar
+	// the first time we want a real progress monitor but any time we would reload we don't need it
+	const realMonitorId = progressTracker.registerMonitorSync(totalWork)
+	const realMonitor = assertNotNull(progressTracker.getMonitor(realMonitorId))
+	yield realMonitor
+	while (true) {
+		yield new NoopProgressMonitor()
+	}
+}
+
+export function formatNotificationForDisplay(eventTime: Date, summary: string): { title: string; body: string } {
+	let dateString: string
+
+	if (isSameDay(eventTime, new Date())) {
+		dateString = formatTime(eventTime)
+	} else {
+		dateString = formatDateWithWeekdayAndTime(eventTime)
+	}
+
+	const body = `${dateString} ${summary}`
+
+	return { body, title: body }
 }

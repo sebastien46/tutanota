@@ -36,8 +36,7 @@ import type { MailboxDetail, MailModel } from "../model/MailModel"
 import { RecipientNotResolvedError } from "../../api/common/error/RecipientNotResolvedError"
 import stream from "mithril/stream"
 import Stream from "mithril/stream"
-import type { EntityUpdateData } from "../../api/main/EventController"
-import { EventController, isUpdateForTypeRef } from "../../api/main/EventController"
+import { EventController } from "../../api/main/EventController"
 import { isMailAddress } from "../../misc/FormatValidator"
 import type { ContactModel } from "../../contacts/model/ContactModel"
 import type { Language, TranslationKey, TranslationText } from "../../misc/LanguageViewModel"
@@ -64,8 +63,7 @@ import { getSenderName } from "../../misc/MailboxPropertiesUtils.js"
 import { isLegacyMail, MailWrapper } from "../../api/common/MailWrapper.js"
 import { cleanMailAddress, findRecipientWithAddress } from "../../api/common/utils/CommonCalendarUtils.js"
 import { ProgrammingError } from "../../api/common/error/ProgrammingError.js"
-import { KdfPicker } from "../../misc/KdfPicker.js"
-import { ConfigurationDatabase } from "../../api/worker/facades/lazy/ConfigurationDatabase.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
 
@@ -154,8 +152,6 @@ export class SendMailModel {
 		private readonly recipientsModel: RecipientsModel,
 		private readonly dateProvider: DateProvider,
 		private mailboxProperties: MailboxProperties,
-		private readonly kdfPicker: KdfPicker,
-		private readonly configFacade: ConfigurationDatabase,
 	) {
 		const userProps = logins.getUserController().props
 		this.senderAddress = this.getDefaultSender()
@@ -775,8 +771,7 @@ export class SendMailModel {
 
 			await this.saveDraft(true, mailMethod)
 			await this.updateContacts(recipients)
-			const kdfVersion = await this.kdfPicker.pickKdfType()
-			await this.mailFacade.sendDraft(assertNotNull(this.draft, "draft was null?"), recipients, this.selectedNotificationLanguage, kdfVersion)
+			await this.mailFacade.sendDraft(assertNotNull(this.draft, "draft was null?"), recipients, this.selectedNotificationLanguage)
 			await this.updatePreviousMail()
 			await this.updateExternalLanguage()
 			return true
@@ -883,10 +878,22 @@ export class SendMailModel {
 			const attachments = saveAttachments ? this.attachments : null
 
 			// We also want to create new drafts for drafts edited from trash or spam folder
+			const { htmlSanitizer } = await import("../../misc/HtmlSanitizer")
+			const unsanitized_body = this.getBody()
+			const body = htmlSanitizer.sanitizeHTML(unsanitized_body, {
+				// store the draft always with external links preserved. this reverts
+				// the draft-src and draft-srcset attribute stow.
+				blockExternalContent: false,
+				// since we're not displaying this, this is fine.
+				allowRelativeLinks: true,
+				// do not touch inline images, we just want to store this.
+				usePlaceholderForInlineImages: false,
+			}).html
+
 			this.draft =
 				this.draft == null || (await this.isMailInTrashOrSpam(this.draft))
-					? await this.createDraft(this.getBody(), attachments, mailMethod)
-					: await this.updateDraft(this.getBody(), attachments, this.draft)
+					? await this.createDraft(body, attachments, mailMethod)
+					: await this.updateDraft(body, attachments, this.draft)
 
 			const attachmentIds = await this.mailFacade.getAttachmentIds(this.draft)
 			const newAttachments = await promiseMap(attachmentIds, (fileId) => this.entity.load<TutanotaFile>(FileTypeRef, fileId), {
@@ -926,6 +933,9 @@ export class SendMailModel {
 			_id: [listId, stringToCustomId(this.senderAddress)],
 			_ownerGroup: this.user().user.userGroup.group,
 			text: `Subject: ${this.getSubject()}<br>${body}`,
+			date: null,
+			range: null,
+			customer: null,
 		})
 		return this.entity.setup(listId, m).catch(ofClass(NotAuthorizedError, (e) => console.log("not authorized for approval message")))
 	}

@@ -13,7 +13,7 @@ import { EntityClient } from "../../api/common/EntityClient.js"
 import { GroupManagementFacade } from "../../api/worker/facades/lazy/GroupManagementFacade.js"
 import { LoginController } from "../../api/main/LoginController.js"
 import { arrayEquals, debounce, lazyMemoized, memoized } from "@tutao/tutanota-utils"
-import { EntityEventsListener, EntityUpdateData, EventController, isUpdateForTypeRef } from "../../api/main/EventController.js"
+import { EntityEventsListener, EventController } from "../../api/main/EventController.js"
 import Stream from "mithril/stream"
 import stream from "mithril/stream"
 import { Router } from "../../gui/ScopedRouter.js"
@@ -22,6 +22,7 @@ import { ReceivedGroupInvitation } from "../../api/entities/sys/TypeRefs.js"
 import { ReceivedGroupInvitationsModel } from "../../sharing/model/ReceivedGroupInvitationsModel.js"
 import { GroupType } from "../../api/common/TutanotaConstants.js"
 import { locator } from "../../api/main/MainLocator.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 export class ContactListViewModel {
 	private selectedContactList: Id | null = null

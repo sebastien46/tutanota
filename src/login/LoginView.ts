@@ -1,4 +1,4 @@
-import m, { ChildArray, Children, Vnode } from "mithril"
+import m, { Children, Vnode } from "mithril"
 import { client } from "../misc/ClientDetector"
 import { assertMainOrNode, isApp, isDesktop } from "../api/common/Env"
 import { InfoLink, lang } from "../misc/LanguageViewModel"
@@ -16,7 +16,7 @@ import { CredentialsSelector } from "./CredentialsSelector"
 import { getWhitelabelCustomizations } from "../misc/WhitelabelCustomizations"
 import { themeController } from "../gui/theme"
 import { createAsyncDropdown, createDropdown, DropdownButtonAttrs } from "../gui/base/Dropdown.js"
-import type { clickHandler } from "../gui/base/GuiUtils"
+import type { ClickHandler } from "../gui/base/GuiUtils"
 import { IconButton } from "../gui/base/IconButton.js"
 import { showLogsDialog } from "./LoginLogDialog.js"
 import { BaseTopLevelView } from "../gui/BaseTopLevelView.js"
@@ -80,7 +80,7 @@ export class LoginView extends BaseTopLevelView implements TopLevelView<LoginVie
 					m(
 						".flex.col.flex-grow-shrink-auto.max-width-m.plr-l." + (styles.isSingleColumnLayout() ? "pt" : "pt-l"),
 						{
-							...landmarkAttrs(AriaLandmarks.Main, lang.get("login_label")),
+							...landmarkAttrs(AriaLandmarks.Main, isApp() || isDesktop() ? lang.get("addAccount_action") : lang.get("login_label")),
 							oncreate: (vnode) => {
 								;(vnode.dom as HTMLElement).focus()
 							},
@@ -131,7 +131,7 @@ export class LoginView extends BaseTopLevelView implements TopLevelView<LoginVie
 				: null,
 			this._deleteCredentialsLinkVisible()
 				? m(Button, {
-						label: this.viewModel.displayMode === DisplayMode.DeleteCredentials ? "cancel_action" : "deleteCredentials_action",
+						label: this.viewModel.displayMode === DisplayMode.DeleteCredentials ? "cancel_action" : "removeAccount_action",
 						type: ButtonType.Secondary,
 						click: () => this._switchDeleteCredentialsState(),
 				  })
@@ -169,7 +169,7 @@ export class LoginView extends BaseTopLevelView implements TopLevelView<LoginVie
 		])
 	}
 
-	themeSwitchListener(): clickHandler {
+	themeSwitchListener(): ClickHandler {
 		return createAsyncDropdown({
 			lazyButtons: async () => {
 				const defaultButtons: ReadonlyArray<DropdownButtonAttrs> = [

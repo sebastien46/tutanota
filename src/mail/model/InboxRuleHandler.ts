@@ -2,7 +2,6 @@ import type { InboxRule, Mail, MoveMailData } from "../../api/entities/tutanota/
 import { createMoveMailData, MailHeadersTypeRef } from "../../api/entities/tutanota/TypeRefs.js"
 import { InboxRuleType, MailFolderType, MAX_NBR_MOVE_DELETE_MAIL_SERVICE } from "../../api/common/TutanotaConstants"
 import { isDomainName, isRegularExpression } from "../../misc/FormatValidator"
-import { getLegacyMailHeaders, getMailHeaders } from "../../api/common/utils/Utils"
 import { assertNotNull, asyncFind, debounce, ofClass, promiseMap, splitInChunks } from "@tutao/tutanota-utils"
 import { lang } from "../../misc/LanguageViewModel"
 import type { MailboxDetail } from "./MailModel"
@@ -15,6 +14,7 @@ import { MailFacade } from "../../api/worker/facades/lazy/MailFacade.js"
 import { isLegacyMail } from "../../api/common/MailWrapper.js"
 import { assertSystemFolderOfType } from "../../api/common/mail/CommonMailUtils.js"
 import { LoginController } from "../../api/main/LoginController.js"
+import { getLegacyMailHeaders, getMailHeaders } from "./MailUtils.js"
 
 assertMainOrNode()
 const moveMailDataPerFolder: MoveMailData[] = []
@@ -115,9 +115,10 @@ export class InboxRuleHandler {
 					if (moveMailData) {
 						moveMailData.mails.push(mail._id)
 					} else {
-						moveMailData = createMoveMailData()
-						moveMailData.targetFolder = inboxRule.targetFolder
-						moveMailData.mails.push(mail._id)
+						moveMailData = createMoveMailData({
+							targetFolder: inboxRule.targetFolder,
+							mails: [mail._id],
+						})
 						moveMailDataPerFolder.push(moveMailData)
 					}
 
@@ -166,7 +167,7 @@ async function checkInboxRule(mailFacade: MailFacade, entityClient: EntityClient
 				inboxRule,
 			)
 		} else if (ruleType === InboxRuleType.RECIPIENT_BCC_EQUALS) {
-			const bccRecipients = !isLegacyMail(mail) ? (await mailFacade.loadMailDetailsBlob(mail)).recipients.ccRecipients : mail.bccRecipients
+			const bccRecipients = !isLegacyMail(mail) ? (await mailFacade.loadMailDetailsBlob(mail)).recipients.bccRecipients : mail.bccRecipients
 			return _checkEmailAddresses(
 				bccRecipients.map((m) => m.address),
 				inboxRule,

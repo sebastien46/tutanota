@@ -1,6 +1,6 @@
 import m, { Children, Component, Vnode } from "mithril"
 import { InfoLink, lang } from "../../misc/LanguageViewModel.js"
-import { getFolderIconByType, getMailAddressDisplayText, getSenderAddressDisplay, isTutanotaTeamMail } from "../model/MailUtils.js"
+import { getFolderIconByType, getMailAddressDisplayText, getSenderAddressDisplay } from "../model/MailUtils.js"
 import { theme } from "../../gui/theme.js"
 import { styles } from "../../gui/styles.js"
 import { ExpanderPanel } from "../../gui/base/Expander.js"
@@ -10,7 +10,7 @@ import { Icons } from "../../gui/base/icons/Icons.js"
 import { EventBanner, EventBannerAttrs } from "./EventBanner.js"
 import { RecipientButton } from "../../gui/base/RecipientButton.js"
 import { createAsyncDropdown, createDropdown, DropdownButtonAttrs } from "../../gui/base/Dropdown.js"
-import { InboxRuleType, Keys, MailAuthenticationStatus, TabIndex } from "../../api/common/TutanotaConstants.js"
+import { EncryptionAuthStatus, InboxRuleType, Keys, MailAuthenticationStatus, TabIndex } from "../../api/common/TutanotaConstants.js"
 import { Icon, progressIcon } from "../../gui/base/Icon.js"
 import { formatDateWithWeekday, formatDateWithWeekdayAndYear, formatStorageSize, formatTime } from "../../misc/Formatter.js"
 import { isAndroidApp, isDesktop, isIOSApp } from "../../api/common/Env.js"
@@ -27,11 +27,8 @@ import { liveDataAttrs } from "../../gui/AriaUtils.js"
 import { isKeyPressed } from "../../misc/KeyManager.js"
 import { AttachmentBubble } from "../../gui/AttachmentBubble.js"
 import { responsiveCardHMargin, responsiveCardHPadding } from "../../gui/cards.js"
-
-export interface MailAddressAndName {
-	name: string
-	address: string
-}
+import { companyTeamLabel } from "../../misc/ClientConstants.js"
+import { isTutanotaTeamMail, MailAddressAndName } from "../../api/common/mail/CommonMailUtils.js"
 
 export type MailAddressDropdownCreator = (args: {
 	mailAddress: MailAddressAndName
@@ -117,7 +114,7 @@ export class MailViewerHeader implements Component<MailViewerHeaderAttrs> {
 				},
 			},
 			[
-				m(".small.flex.flex-wrap.items-start", [m("span.text-break", getSenderAddressDisplay(viewModel.mail))]),
+				m(".small.flex.flex-wrap.items-start", [m("span.text-break", getSenderAddressDisplay(viewModel.getDisplayedSender()))]),
 				m(".flex", [
 					this.getRecipientEmailAddress(attrs),
 					m(".flex-grow"),
@@ -197,7 +194,7 @@ export class MailViewerHeader implements Component<MailViewerHeaderAttrs> {
 							  )
 							: null,
 						this.tutaoBadge(viewModel),
-						m("span.text-break" + (viewModel.isUnread() ? ".font-weight-600" : ""), viewModel.mail.sender.name),
+						m("span.text-break" + (viewModel.isUnread() ? ".font-weight-600" : ""), viewModel.getDisplayedSender().name),
 					],
 				),
 				m(
@@ -293,16 +290,18 @@ export class MailViewerHeader implements Component<MailViewerHeaderAttrs> {
 	private renderDetails(attrs: MailViewerHeaderAttrs, { bubbleMenuWidth }: { bubbleMenuWidth: number }): Children {
 		const { viewModel, createMailAddressContextButtons } = attrs
 		const envelopeSender = viewModel.getDifferentEnvelopeSender()
+		const displayedSender = viewModel.getDisplayedSender()
+
 		return m("." + responsiveCardHPadding(), liveDataAttrs(), [
 			m(
 				".mt-s",
 				m(".small.b", lang.get("from_label")),
 				m(RecipientButton, {
-					label: getMailAddressDisplayText(viewModel.getSender().name, viewModel.getSender().address, false),
+					label: getMailAddressDisplayText(displayedSender.name, displayedSender.address, false),
 					click: createAsyncDropdown({
 						lazyButtons: () =>
 							createMailAddressContextButtons({
-								mailAddress: viewModel.getSender(),
+								mailAddress: displayedSender,
 								defaultInboxRuleField: InboxRuleType.FROM_EQUALS,
 							}),
 						width: bubbleMenuWidth,
@@ -566,7 +565,7 @@ export class MailViewerHeader implements Component<MailViewerHeaderAttrs> {
 					{
 						classes: ".mr-s",
 					},
-					"Tutanota Team",
+					companyTeamLabel,
 			  )
 			: null
 	}
@@ -589,7 +588,10 @@ export class MailViewerHeader implements Component<MailViewerHeaderAttrs> {
 	}
 
 	private renderHardAuthenticationFailWarning(viewModel: MailViewerViewModel): Children | null {
-		if (!viewModel.isWarningDismissed() && viewModel.mail.authStatus === MailAuthenticationStatus.HARD_FAIL) {
+		const authFailed =
+			viewModel.checkMailAuthenticationStatus(MailAuthenticationStatus.HARD_FAIL) ||
+			viewModel.mail.encryptionAuthStatus === EncryptionAuthStatus.PQ_AUTHENTICATION_FAILED
+		if (!viewModel.isWarningDismissed() && authFailed) {
 			return m(InfoBanner, {
 				message: "mailAuthFailed_msg",
 				icon: Icons.Warning,
@@ -606,7 +608,7 @@ export class MailViewerHeader implements Component<MailViewerHeaderAttrs> {
 	}
 
 	private renderSoftAuthenticationFailWarning(viewModel: MailViewerViewModel): Children | null {
-		if (!viewModel.isWarningDismissed() && viewModel.mail.authStatus === MailAuthenticationStatus.SOFT_FAIL) {
+		if (!viewModel.isWarningDismissed() && viewModel.checkMailAuthenticationStatus(MailAuthenticationStatus.SOFT_FAIL)) {
 			return m(InfoBanner, {
 				message: () =>
 					viewModel.mail.differentEnvelopeSender
@@ -640,7 +642,7 @@ export class MailViewerHeader implements Component<MailViewerHeaderAttrs> {
 		}
 		const alwaysOrNeverAllowButtons = attrs.viewModel.canPersistBlockingStatus()
 			? [
-					attrs.viewModel.isMailAuthenticated()
+					attrs.viewModel.checkMailAuthenticationStatus(MailAuthenticationStatus.AUTHENTICATED)
 						? {
 								label: "allowExternalContentSender_action" as const,
 								click: () => attrs.viewModel.setContentBlockingStatus(ContentBlockingStatus.AlwaysShow),

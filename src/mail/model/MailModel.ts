@@ -1,7 +1,6 @@
 import m from "mithril"
 import stream from "mithril/stream"
 import Stream from "mithril/stream"
-import { containsEventOfType } from "../../api/common/utils/Utils"
 import { assertNotNull, groupBy, lazyMemoized, neverNull, noOp, ofClass, promiseMap, splitInChunks } from "@tutao/tutanota-utils"
 import type { Mail, MailBox, MailboxGroupRoot, MailboxProperties, MailFolder } from "../../api/entities/tutanota/TypeRefs.js"
 import {
@@ -17,8 +16,8 @@ import type { Group, GroupInfo, GroupMembership, WebsocketCounterData } from "..
 import { GroupInfoTypeRef, GroupTypeRef } from "../../api/entities/sys/TypeRefs.js"
 import type { MailReportType } from "../../api/common/TutanotaConstants"
 import { FeatureType, MailFolderType, MAX_NBR_MOVE_DELETE_MAIL_SERVICE, OperationType, ReportMovedMailsType } from "../../api/common/TutanotaConstants"
-import type { EntityUpdateData } from "../../api/main/EventController"
-import { EventController, isUpdateForTypeRef } from "../../api/main/EventController"
+
+import { EventController } from "../../api/main/EventController"
 import { lang } from "../../misc/LanguageViewModel"
 import { Notifications } from "../../gui/Notifications"
 import { EntityClient } from "../../api/common/EntityClient"
@@ -33,6 +32,7 @@ import { FolderSystem } from "../../api/common/mail/FolderSystem.js"
 import { UserError } from "../../api/main/UserError.js"
 import { assertSystemFolderOfType, isSpamOrTrashFolder } from "../../api/common/mail/CommonMailUtils.js"
 import { InboxRuleHandler } from "./InboxRuleHandler.js"
+import { containsEventOfType, EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 export type MailboxDetail = {
 	mailbox: MailBox
@@ -518,7 +518,9 @@ export class MailModel {
 				.setup(
 					null,
 					createMailboxProperties({
-						_ownerGroup: mailboxGroupRoot._ownerGroup,
+						_ownerGroup: mailboxGroupRoot._ownerGroup ?? "",
+						reportMovedMails: "0",
+						mailAddressProperties: [],
 					}),
 				)
 				.catch(

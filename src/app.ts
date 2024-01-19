@@ -4,13 +4,12 @@ import Mithril, { Children, ClassComponent, Component, RouteDefs, RouteResolver,
 import { lang, languageCodeToTag, languages } from "./misc/LanguageViewModel"
 import { root } from "./RootView"
 import { disableErrorHandlingDuringLogout, handleUncaughtError } from "./misc/ErrorHandler"
-import { assertMainOrNodeBoot, bootFinished, isApp, isBrowser, isDesktop, isOfflineStorageAvailable } from "./api/common/Env"
+import { assertMainOrNodeBoot, bootFinished, isApp, isDesktop, isOfflineStorageAvailable } from "./api/common/Env"
 import { assertNotNull, neverNull } from "@tutao/tutanota-utils"
 import { windowFacade } from "./misc/WindowFacade"
 import { styles } from "./gui/styles"
 import { deviceConfig } from "./misc/DeviceConfig"
 import { Logger, replaceNativeLogger } from "./api/common/Logger"
-import { init as initSW } from "./serviceworker/ServiceWorkerClient"
 import { applicationPaths } from "./ApplicationPaths"
 import { ProgrammingError } from "./api/common/error/ProgrammingError"
 import { NativeWebauthnView } from "./login/NativeWebauthnView"
@@ -182,17 +181,12 @@ import("./translations/en")
 			login: makeViewResolver<LoginViewAttrs, LoginView, { makeViewModel: () => LoginViewModel }>(
 				{
 					prepareRoute: async () => {
-						const { LoginViewModel } = await import("./login/LoginViewModel.js")
 						const { LoginView } = await import("./login/LoginView.js")
-						const domainConfig = isBrowser()
-							? locator.domainConfigProvider().getDomainConfigForHostname(location.hostname, location.protocol, location.port)
-							: // in this case, we know that we have a staticUrl set that we need to use
-							  locator.domainConfigProvider().getCurrentDomainConfig()
+						const makeViewModel = await locator.loginViewModelFactory()
 						return {
 							component: LoginView,
 							cache: {
-								makeViewModel: () =>
-									new LoginViewModel(locator.logins, locator.credentialsProvider, locator.secondFactorHandler, deviceConfig, domainConfig),
+								makeViewModel,
 							},
 						}
 					},
@@ -328,7 +322,11 @@ import("./translations/en")
 							},
 						}
 					},
-					prepareAttrs: ({ header, calendarViewModel, drawerAttrsFactory }) => ({ drawerAttrs: drawerAttrsFactory(), header, calendarViewModel }),
+					prepareAttrs: ({ header, calendarViewModel, drawerAttrsFactory }) => ({
+						drawerAttrs: drawerAttrsFactory(),
+						header,
+						calendarViewModel,
+					}),
 				},
 				locator.logins,
 			),
@@ -444,11 +442,10 @@ import("./translations/en")
 					prepareRoute: async () => {
 						const { CredentialsMigrationViewModel } = await import("./login/CredentialsMigrationViewModel.js")
 						const { CredentialsMigrationView } = await import("./login/CredentialsMigrationView.js")
-						const { LoginViewModel } = await import("./login/LoginViewModel.js")
 						const domainConfig = locator.domainConfigProvider().getDomainConfigForHostname(location.hostname, location.protocol, location.port)
 						const parentOrigin = domainConfig.partneredDomainTransitionUrl
-						const logins = new LoginViewModel(locator.logins, locator.credentialsProvider, locator.secondFactorHandler, deviceConfig, domainConfig)
-						const credentialsMigrationViewModel = new CredentialsMigrationViewModel(logins, parentOrigin)
+						const loginViewModelFactory = await locator.loginViewModelFactory()
+						const credentialsMigrationViewModel = new CredentialsMigrationViewModel(loginViewModelFactory(), parentOrigin)
 						return {
 							component: CredentialsMigrationView,
 							cache: { credentialsMigrationViewModel },
@@ -500,7 +497,8 @@ import("./translations/en")
 		}
 		// after we set up prefixWithoutFile
 		const domainConfig = locator.domainConfigProvider().getCurrentDomainConfig()
-		initSW(domainConfig)
+		const serviceworker = await import("./serviceworker/ServiceWorkerClient.js")
+		serviceworker.init(domainConfig)
 
 		printJobsMessage(domainConfig)
 	})

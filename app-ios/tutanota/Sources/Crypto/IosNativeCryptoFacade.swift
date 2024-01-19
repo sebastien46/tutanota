@@ -75,13 +75,25 @@ actor IosNativeCryptoFacade: NativeCryptoFacade {
     _ hashLength: Int
   ) async throws -> DataWrapper {
     return try generateArgon2idHash(
-      ofPassword: password.data,
+      ofPassword: password,
       ofHashLength: hashLength,
       withSalt: salt.data,
       withIterations: UInt(timeCost),
       withParallelism: UInt(parallelism),
       withMemoryCost: UInt(memoryCost)
     ).wrap()
+  }
+  
+  func generateKyberKeypair(_ seed: DataWrapper) async throws -> KyberKeyPair {
+    return tutanota.generateKyberKeypair(withSeed: seed.data)
+  }
+  
+  func kyberEncapsulate(_ publicKey: KyberPublicKey, _ seed: DataWrapper) async throws -> KyberEncapsulation {
+    return try tutanota.kyberEncapsulate(publicKey: publicKey, withSeed: seed.data)
+  }
+  
+  func kyberDecapsulate(_ privateKey: KyberPrivateKey, _ ciphertext: DataWrapper) async throws -> DataWrapper {
+    return try tutanota.kyberDecapsulate(ciphertext: ciphertext.data, withPrivateKey: privateKey)
   }
 }
 

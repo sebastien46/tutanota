@@ -15,9 +15,7 @@ import {
 	utf8Uint8ArrayToString,
 } from "@tutao/tutanota-utils"
 import { Cardinality, ValueType } from "../EntityConstants"
-import type { ModelValue, SomeEntity, TypeModel } from "../EntityTypes"
-import { ElementEntity } from "../EntityTypes"
-import { ProgrammingError } from "../error/ProgrammingError.js"
+import type { ElementEntity, Entity, ModelValue, SomeEntity, TypeModel } from "../EntityTypes"
 
 /**
  * the maximum ID for elements stored on the server (number with the length of 10 bytes) => 2^80 - 1
@@ -60,8 +58,40 @@ export const POST_MULTIPLE_LIMIT = 100
  */
 export type Stripped<T extends Partial<SomeEntity>> = Omit<
 	T,
-	"_id" | "_ownerGroup" | "_ownerEncSessionKey" | "_permissions" | "_errors" | "_format" | "_type" | `_finalEncrypted${string}` | `_defaultEncrypted${string}`
+	| "_id"
+	| "_area"
+	| "_owner"
+	| "_ownerGroup"
+	| "_ownerEncSessionKey"
+	| "_permissions"
+	| "_errors"
+	| "_format"
+	| "_type"
+	| `_finalEncrypted${string}`
+	| `_defaultEncrypted${string}`
 >
+
+type OptionalEntity<T extends Entity> = T & {
+	_id?: Id | IdTuple
+	_ownerGroup?: Id
+}
+
+export type StrippedEntity<T extends Entity> =
+	| Omit<
+			T,
+			| "_id"
+			| "_ownerGroup"
+			| "_ownerEncSessionKey"
+			| "_permissions"
+			| "_errors"
+			| "_format"
+			| "_type"
+			| "_area"
+			| "_owner"
+			| `_finalEncrypted${string}`
+			| `_defaultEncrypted${string}`
+	  >
+	| OptionalEntity<T>
 
 /**
  * Tests if one id is bigger than another.
@@ -318,8 +348,7 @@ export function generatedIdToTimestamp(base64Ext: Id): number {
 	return numberResult
 }
 
-// We can't import EntityUtils here, otherwise we should say GENERATED_MAX_ID.length or something like it
-const base64extEncodedIdLength = 12
+const base64extEncodedIdLength = GENERATED_MAX_ID.length
 const base64extAlphabet = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 
 export function isValidGeneratedId(id: Id | IdTuple): boolean {
@@ -336,7 +365,7 @@ export function assertIsEntity<T extends SomeEntity>(entity: SomeEntity, type: T
 	if (isSameTypeRef(entity._type, type)) {
 		return true
 	} else {
-		throw new ProgrammingError(`Entity is not of correct type ${type}`)
+		return false
 	}
 }
 
@@ -371,7 +400,7 @@ export function removeTechnicalFields<E extends Partial<SomeEntity>>(entity: E) 
  * get a clone of a (partial) entity that does not contain any fields that would indicate that it was ever persisted anywhere.
  * @param entity the entity to strip
  */
-export function getStrippedClone<E extends SomeEntity>(entity: Partial<E>): Stripped<Partial<E>> {
+export function getStrippedClone<E extends SomeEntity>(entity: StrippedEntity<E>): Stripped<E> {
 	const cloned = clone(entity)
 	removeTechnicalFields(cloned)
 	removeIdentityFields(cloned)

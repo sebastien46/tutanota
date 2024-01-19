@@ -1,7 +1,5 @@
 import type { EmailTemplate, KnowledgeBaseEntry } from "../../api/entities/tutanota/TypeRefs.js"
 import { EmailTemplateTypeRef, KnowledgeBaseEntryTypeRef } from "../../api/entities/tutanota/TypeRefs.js"
-import type { EntityEventsListener, EntityUpdateData } from "../../api/main/EventController"
-import { EventController, isUpdateForTypeRef } from "../../api/main/EventController"
 import { EntityClient } from "../../api/common/EntityClient"
 import { knowledgeBaseSearch } from "./KnowledgeBaseSearchFilter"
 import type { LanguageCode } from "../../misc/LanguageViewModel"
@@ -15,6 +13,8 @@ import type { TemplateGroupInstance } from "../../templates/model/TemplateGroupM
 import { loadTemplateGroupInstance } from "../../templates/model/TemplatePopupModel"
 import type { UserController } from "../../api/main/UserController"
 import { hasCapabilityOnGroup } from "../../sharing/GroupUtils"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
+import { EntityEventsListener, EventController } from "../../api/main/EventController.js"
 
 export const SELECT_NEXT_ENTRY = "next"
 

@@ -22,12 +22,13 @@ export class CachePostLoginAction implements PostLoginAction {
 		// we use an ephemeral cache for non-persistent sessions which doesn't
 		// support or save calendar events, so it's pointless to preload them.
 		if (loggedInEvent.sessionType !== SessionType.Persistent) return
+		//
 		// 3 work to load calendar info, 2 work to load short and long events
 		const workPerCalendar = 3 + 2
 		const totalWork = this.logins.getUserController().getCalendarMemberships().length * workPerCalendar
 		const monitorHandle = await this.progressTracker.registerMonitor(totalWork)
 		const progressMonitor = this.progressTracker.getMonitor(monitorHandle) ?? new NoopProgressMonitor()
-		const calendarInfos = await this.calendarModel.loadCalendarInfos(progressMonitor)
+		const calendarInfos = await this.calendarModel.getCalendarInfos()
 
 		await promiseMap(calendarInfos.values(), async ({ groupRoot }) => {
 			await Promise.all([

@@ -11,7 +11,7 @@ import {
 } from "@tutao/tutanota-utils"
 import type { GiftCardRedeemGetReturn } from "../../../entities/sys/TypeRefs.js"
 import { createGiftCardCreateData, createGiftCardRedeemData, GiftCard } from "../../../entities/sys/TypeRefs.js"
-import { aes128RandomKey, base64ToKey, bitArrayToUint8Array, encryptKey, sha256Hash } from "@tutao/tutanota-crypto"
+import { aes256RandomKey, base64ToKey, bitArrayToUint8Array, encryptKey, sha256Hash } from "@tutao/tutanota-crypto"
 import { IServiceExecutor } from "../../../common/ServiceRequest.js"
 import { GiftCardRedeemService, GiftCardService } from "../../../entities/sys/Services.js"
 import { elementIdPart, GENERATED_MAX_ID } from "../../../common/utils/EntityUtils.js"
@@ -21,7 +21,8 @@ import { ProgrammingError } from "../../../common/error/ProgrammingError.js"
 import { CustomerFacade } from "./CustomerFacade.js"
 
 const ID_LENGTH = GENERATED_MAX_ID.length
-const KEY_LENGTH_B64 = 24
+const KEY_LENGTH_128_BIT_B64 = 24
+const KEY_LENGTH_256_BIT_B64 = 44
 
 export class GiftCardFacade {
 	constructor(
@@ -40,7 +41,7 @@ export class GiftCardFacade {
 
 		const ownerKey = this.user.getGroupKey(getFirstOrThrow(adminGroupIds)) // adminGroupKey
 
-		const sessionKey = aes128RandomKey()
+		const sessionKey = aes256RandomKey()
 		const { giftCard } = await this.serviceExecutor.post(
 			GiftCardService,
 			createGiftCardCreateData({
@@ -61,6 +62,7 @@ export class GiftCardFacade {
 			createGiftCardRedeemData({
 				giftCardInfo: id,
 				keyHash: sha256Hash(bitArrayToUint8Array(base64ToKey(key))),
+				countryCode: "",
 			}),
 			{
 				sessionKey: base64ToKey(key),
@@ -97,7 +99,7 @@ export class GiftCardFacade {
 		const id = base64ToBase64Ext(base64UrlToBase64(token.slice(0, ID_LENGTH)))
 		const key = base64UrlToBase64(token.slice(ID_LENGTH, token.length))
 
-		if (id.length !== ID_LENGTH || key.length !== KEY_LENGTH_B64) {
+		if (id.length !== ID_LENGTH || (key.length !== KEY_LENGTH_128_BIT_B64 && key.length !== KEY_LENGTH_256_BIT_B64)) {
 			throw new Error("invalid token")
 		}
 
@@ -109,7 +111,7 @@ export class GiftCardFacade {
 			throw new Error("Invalid gift card params")
 		}
 		const keyBase64 = uint8ArrayToBase64(key)
-		if (keyBase64.length != KEY_LENGTH_B64) {
+		if (keyBase64.length !== KEY_LENGTH_128_BIT_B64 && keyBase64.length !== KEY_LENGTH_256_BIT_B64) {
 			throw new Error("Invalid gift card key")
 		}
 

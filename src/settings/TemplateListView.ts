@@ -1,6 +1,5 @@
 import m, { Children } from "mithril"
-import type { EntityUpdateData } from "../api/main/EventController"
-import { isUpdateForTypeRef } from "../api/main/EventController"
+
 import type { UpdatableSettingsViewer } from "./SettingsView"
 import { showTemplateEditor } from "./TemplateEditor"
 import type { EmailTemplate } from "../api/entities/tutanota/TypeRefs.js"
@@ -29,6 +28,7 @@ import { IconButton } from "../gui/base/IconButton.js"
 import { BaseSearchBar, BaseSearchBarAttrs } from "../gui/base/BaseSearchBar.js"
 import { lang } from "../misc/LanguageViewModel.js"
 import { keyManager } from "../misc/KeyManager.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
 

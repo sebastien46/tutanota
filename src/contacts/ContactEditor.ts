@@ -42,6 +42,7 @@ import { ToggleButton } from "../gui/base/buttons/ToggleButton.js"
 import { Icons } from "../gui/base/icons/Icons.js"
 import { ButtonSize } from "../gui/base/ButtonSize.js"
 import { locator } from "../api/main/MainLocator.js"
+import { formatDate } from "../misc/Formatter.js"
 
 assertMainOrNode()
 
@@ -76,7 +77,27 @@ export class ContactEditor {
 		listId?: Id,
 		private readonly newContactIdReceiver: ((contactId: Id) => unknown) | null = null,
 	) {
-		this.contact = contact ? clone(contact) : createContact()
+		this.contact = contact
+			? clone(contact)
+			: createContact({
+					mailAddresses: [],
+					title: null,
+					socialIds: [],
+					role: "",
+					presharedPassword: null,
+					photo: null,
+					phoneNumbers: [],
+					oldBirthdayDate: null,
+					nickname: null,
+					lastName: "",
+					firstName: "",
+					company: "",
+					comment: "",
+					birthdayIso: null,
+					addresses: [],
+					autoTransmitPassword: "",
+					oldBirthdayAggregate: null,
+			  })
 		this.isNewContact = contact?._id == null
 
 		if (this.isNewContact && listId == null) {
@@ -364,10 +385,11 @@ export class ContactEditor {
 
 	private renderBirthdayField(): Children {
 		let birthdayHelpText = () => {
-			let bday = createBirthday()
-			bday.day = "22"
-			bday.month = "9"
-			bday.year = "2000"
+			let bday = createBirthday({
+				day: "22",
+				month: "9",
+				year: "2000",
+			})
 			return this.hasInvalidBirthday
 				? lang.get("invalidDateFormat_msg", {
 						"{1}": formatBirthdayNumeric(bday),
@@ -385,7 +407,7 @@ export class ContactEditor {
 					this.contact.birthdayIso = null
 					this.hasInvalidBirthday = false
 				} else {
-					let birthday = parseBirthday(value)
+					let birthday = parseBirthday(value, (referenceDate) => formatDate(referenceDate))
 
 					if (birthday) {
 						try {

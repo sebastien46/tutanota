@@ -9,7 +9,7 @@ import { notifications } from "../../gui/Notifications"
 import { LoginController } from "./LoginController"
 import type { ContactModel } from "../../contacts/model/ContactModel"
 import { EntityClient } from "../common/EntityClient"
-import { CalendarModel } from "../../calendar/model/CalendarModel"
+import type { CalendarInfo, CalendarModel } from "../../calendar/model/CalendarModel"
 import type { DeferredObject, lazy, lazyAsync } from "@tutao/tutanota-utils"
 import { defer, lazyMemoized, noOp } from "@tutao/tutanota-utils"
 import { ProgressTracker } from "./ProgressTracker"
@@ -41,7 +41,6 @@ import { WebauthnClient } from "../../misc/2fa/webauthn/WebauthnClient"
 import type { UserManagementFacade } from "../worker/facades/lazy/UserManagementFacade.js"
 import type { GroupManagementFacade } from "../worker/facades/lazy/GroupManagementFacade.js"
 import { WorkerRandomizer } from "../worker/WorkerImpl"
-import { exposeRemote } from "../common/WorkerProxy"
 import { ExposedNativeInterface } from "../../native/common/NativeInterface"
 import { BrowserWebauthn } from "../../misc/2fa/webauthn/BrowserWebauthn.js"
 import { UsageTestController } from "@tutao/tutanota-usagetests"
@@ -70,6 +69,7 @@ import type { AnotherUserMailAddressNameChanger } from "../../settings/mailaddre
 import type { GroupInfo } from "../entities/sys/TypeRefs.js"
 import type { SendMailModel } from "../../mail/editor/SendMailModel.js"
 import type { CalendarEvent, Mail, MailboxProperties } from "../entities/tutanota/TypeRefs.js"
+import { CalendarEventAttendee } from "../entities/tutanota/TypeRefs.js"
 import type { CreateMailViewerOptions } from "../../mail/view/MailViewer.js"
 import type { RecipientsSearchModel } from "../../misc/RecipientsSearchModel.js"
 import type { MailViewerViewModel } from "../../mail/view/MailViewerViewModel.js"
@@ -84,11 +84,11 @@ import { OfflineIndicatorViewModel } from "../../gui/base/OfflineIndicatorViewMo
 import { AppHeaderAttrs, Header } from "../../gui/Header.js"
 import { CalendarViewModel } from "../../calendar/view/CalendarViewModel.js"
 import { ReceivedGroupInvitationsModel } from "../../sharing/model/ReceivedGroupInvitationsModel.js"
-import { Const, GroupType } from "../common/TutanotaConstants.js"
+import { Const, FeatureType, GroupType } from "../common/TutanotaConstants.js"
 import type { ExternalLoginViewModel } from "../../login/ExternalLoginView.js"
 import type { ConversationViewModel, ConversationViewModelFactory } from "../../mail/view/ConversationViewModel.js"
-import { AlarmScheduler } from "../../calendar/date/AlarmScheduler.js"
-import { CalendarEventModel, CalendarOperation } from "../../calendar/date/eventeditor/CalendarEventModel.js"
+import type { AlarmScheduler } from "../../calendar/date/AlarmScheduler.js"
+import { CalendarEventModel, CalendarOperation } from "../../calendar/gui/eventeditor-model/CalendarEventModel.js"
 import { showProgressDialog } from "../../gui/dialogs/ProgressDialog.js"
 import { SearchViewModel } from "../../search/view/SearchViewModel.js"
 import { SearchRouter } from "../../search/view/SearchRouter.js"
@@ -96,8 +96,15 @@ import { MailOpenedListener } from "../../mail/view/MailViewModel.js"
 import { InboxRuleHandler } from "../../mail/model/InboxRuleHandler.js"
 import { Router, ScopedRouter, ThrottledRouter } from "../../gui/ScopedRouter.js"
 import { ShareableGroupType } from "../../sharing/GroupUtils.js"
-import { KdfPicker } from "../../misc/KdfPicker.js"
 import { DomainConfigProvider } from "../common/DomainConfigProvider.js"
+import type { AppsCredentialRemovalHandler, CredentialRemovalHandler, NoopCredentialRemovalHandler } from "../../login/CredentialRemovalHandler.js"
+import { LoginViewModel } from "../../login/LoginViewModel.js"
+import { getEnabledMailAddressesWithUser } from "../../mail/model/MailUtils.js"
+import type { CalendarEventPreviewViewModel } from "../../calendar/gui/eventpopup/CalendarEventPreviewViewModel.js"
+
+import { getDisplayedSender } from "../common/mail/CommonMailUtils.js"
+import { isCustomizationEnabledForCustomer } from "../common/utils/CustomerUtils.js"
+import { CalendarEventsRepository } from "../../calendar/date/CalendarEventsRepository.js"
 
 assertMainOrNode()
 
@@ -134,7 +141,6 @@ class MainLocator {
 	deviceEncryptionFacade!: DeviceEncryptionFacade
 	usageTestController!: UsageTestController
 	usageTestModel!: UsageTestModel
-	kdfPicker!: KdfPicker
 	newsModel!: NewsModel
 	serviceExecutor!: IServiceExecutor
 	cryptoFacade!: CryptoFacade
@@ -231,6 +237,8 @@ class MainLocator {
 				this.entityClient,
 				this.eventController,
 				this.mailOpenedListener,
+				this.calendarFacade,
+				this.progressTracker,
 				conversationViewModelFactory,
 				redraw,
 			)
@@ -252,7 +260,7 @@ class MainLocator {
 	readonly mailOpenedListener: MailOpenedListener = {
 		onEmailOpened: isDesktop()
 			? (mail) => {
-					this.desktopSystemFacade.sendSocketMessage(mail.sender.address)
+					this.desktopSystemFacade.sendSocketMessage(getDisplayedSender(mail).address)
 			  }
 			: noOp,
 	}
@@ -283,7 +291,7 @@ class MainLocator {
 		return new ReceivedGroupInvitationsModel<TypeOfGroup>(groupType, this.eventController, this.entityClient, this.logins)
 	}
 
-	async calendarViewModel(): Promise<CalendarViewModel> {
+	readonly calendarViewModel = lazyMemoized<Promise<CalendarViewModel>>(async () => {
 		const { CalendarViewModel } = await import("../../calendar/view/CalendarViewModel.js")
 		const { DefaultDateProvider } = await import("../../calendar/date/CalendarUtils")
 		const timeZone = new DefaultDateProvider().timeZone()
@@ -294,7 +302,9 @@ class MainLocator {
 				const mailboxProperties = await this.mailModel.getMailboxProperties(mailboxDetail.mailboxGroupRoot)
 				return await this.calendarEventModel(mode, event, mailboxDetail, mailboxProperties, null)
 			},
+			(...args) => this.calendarEventPreviewModel(...args),
 			await this.calendarModel(),
+			await this.calendarEventsRepository(),
 			this.entityClient,
 			this.eventController,
 			this.progressTracker,
@@ -302,7 +312,14 @@ class MainLocator {
 			await this.receivedGroupInvitationsModel(GroupType.Calendar),
 			timeZone,
 		)
-	}
+	})
+
+	readonly calendarEventsRepository: lazyAsync<CalendarEventsRepository> = lazyMemoized(async () => {
+		const { CalendarEventsRepository } = await import("../../calendar/date/CalendarEventsRepository.js")
+		const { DefaultDateProvider } = await import("../../calendar/date/CalendarUtils")
+		const timeZone = new DefaultDateProvider().timeZone()
+		return new CalendarEventsRepository(await this.calendarModel(), this.calendarFacade, timeZone, this.entityClient, this.eventController)
+	})
 
 	/** This ugly bit exists because CalendarEventWhoModel wants a sync factory. */
 	private async sendMailModelSyncFactory(mailboxDetails: MailboxDetail, mailboxProperties: MailboxProperties): Promise<() => SendMailModel> {
@@ -321,8 +338,6 @@ class MainLocator {
 				recipientsModel,
 				dateProvider,
 				mailboxProperties,
-				this.kdfPicker,
-				this.configFacade,
 			)
 	}
 
@@ -334,9 +349,9 @@ class MainLocator {
 		responseTo: Mail | null,
 	): Promise<CalendarEventModel | null> {
 		const [{ makeCalendarEventModel }, { getTimeZone }, { calendarNotificationSender }] = await Promise.all([
-			import("../../calendar/date/eventeditor/CalendarEventModel.js"),
+			import("../../calendar/gui/eventeditor-model/CalendarEventModel.js"),
 			import("../../calendar/date/CalendarUtils.js"),
-			import("../../calendar/date/CalendarNotificationSender.js"),
+			import("../../calendar/view/CalendarNotificationSender.js"),
 		])
 		const sendMailModelFactory = await this.sendMailModelSyncFactory(mailboxDetail, mailboxProperties)
 		const showProgress = <T>(p: Promise<T>) => showProgressDialog("pleaseWait_msg", p)
@@ -489,16 +504,29 @@ class MainLocator {
 		return new DomainConfigProvider()
 	}
 
-	private getExposedNativeInterface(): ExposedNativeInterface {
-		if (isBrowser()) {
-			throw new ProgrammingError("Tried to access native interfaces in browser")
-		}
+	async credentialsRemovalHandler(): Promise<CredentialRemovalHandler> {
+		const { NoopCredentialRemovalHandler, AppsCredentialRemovalHandler } = await import("../../login/CredentialRemovalHandler.js")
+		return isBrowser() ? new NoopCredentialRemovalHandler() : new AppsCredentialRemovalHandler(this.indexerFacade, this.pushService, this.configFacade)
+	}
 
-		if (this.exposedNativeInterfaces == null) {
-			this.exposedNativeInterfaces = exposeRemote<ExposedNativeInterface>((msg) => this.native.invokeNative(msg.requestType, msg.args))
+	async loginViewModelFactory(): Promise<lazy<LoginViewModel>> {
+		const { LoginViewModel } = await import("../../login/LoginViewModel.js")
+		const credentialsRemovalHandler = await locator.credentialsRemovalHandler()
+		return () => {
+			const domainConfig = isBrowser()
+				? locator.domainConfigProvider().getDomainConfigForHostname(location.hostname, location.protocol, location.port)
+				: // in this case, we know that we have a staticUrl set that we need to use
+				  locator.domainConfigProvider().getCurrentDomainConfig()
+			return new LoginViewModel(
+				locator.logins,
+				locator.credentialsProvider,
+				locator.secondFactorHandler,
+				deviceConfig,
+				domainConfig,
+				credentialsRemovalHandler,
+				isBrowser() ? null : this.pushService,
+			)
 		}
-
-		return this.exposedNativeInterfaces
 	}
 
 	private getNativeInterface<T extends keyof NativeInterfaces>(name: T): NativeInterfaces[T] {
@@ -584,7 +612,7 @@ class MainLocator {
 		this.logins.init()
 		this.eventController = new EventController(locator.logins)
 		this.progressTracker = new ProgressTracker()
-		this.search = new SearchModel(this.searchFacade)
+		this.search = new SearchModel(this.searchFacade, () => this.calendarEventsRepository())
 		this.entityClient = new EntityClient(restInterface)
 		this.cryptoFacade = cryptoFacade
 		this.cacheStorage = cacheStorage
@@ -653,7 +681,7 @@ class MainLocator {
 		this.credentialsProvider = await createCredentialsProvider(
 			deviceEncryptionFacade,
 			this.nativeInterfaces?.native ?? null,
-			sqlCipherFacade ?? null,
+			sqlCipherFacade,
 			isDesktop() ? this.interWindowEventSender : null,
 		)
 		this.random = random
@@ -714,11 +742,11 @@ class MainLocator {
 		this.contactModel = new ContactModel(this.searchFacade, this.entityClient, this.logins, this.eventController)
 		this.minimizedMailModel = new MinimizedMailEditorViewModel()
 		this.usageTestController = new UsageTestController(this.usageTestModel)
-		this.kdfPicker = new KdfPicker(this.usageTestController)
 	}
 
 	readonly calendarModel: () => Promise<CalendarModel> = lazyMemoized(async () => {
 		const { DefaultDateProvider } = await import("../../calendar/date/CalendarUtils")
+		const { CalendarModel } = await import("../../calendar/model/CalendarModel")
 		const timeZone = new DefaultDateProvider().timeZone()
 		return new CalendarModel(
 			notifications,
@@ -736,15 +764,48 @@ class MainLocator {
 	})
 
 	private alarmScheduler: () => Promise<AlarmScheduler> = lazyMemoized(async () => {
-		const { AlarmSchedulerImpl } = await import("../../calendar/date/AlarmScheduler")
+		const { AlarmScheduler } = await import("../../calendar/date/AlarmScheduler")
 		const { DefaultDateProvider } = await import("../../calendar/date/CalendarUtils")
 		const dateProvider = new DefaultDateProvider()
-		return new AlarmSchedulerImpl(dateProvider, await this.scheduler())
+		return new AlarmScheduler(dateProvider, await this.scheduler())
 	})
 
 	private async scheduler(): Promise<SchedulerImpl> {
 		const dateProvider = await this.noZoneDateProvider()
 		return new SchedulerImpl(dateProvider, window, window)
+	}
+
+	async calendarEventPreviewModel(selectedEvent: CalendarEvent, calendars: ReadonlyMap<string, CalendarInfo>): Promise<CalendarEventPreviewViewModel> {
+		const { findAttendeeInAddresses } = await import("../common/utils/CommonCalendarUtils.js")
+		const { getEventType } = await import("../../calendar/gui/CalendarGuiUtils.js")
+		const { CalendarEventPreviewViewModel } = await import("../../calendar/gui/eventpopup/CalendarEventPreviewViewModel.js")
+
+		const mailboxDetails = await this.mailModel.getUserMailboxDetails()
+
+		const mailboxProperties = await this.mailModel.getMailboxProperties(mailboxDetails.mailboxGroupRoot)
+
+		const userController = this.logins.getUserController()
+		const customer = await userController.loadCustomer()
+		const ownMailAddresses = getEnabledMailAddressesWithUser(mailboxDetails, userController.userGroupInfo)
+		const ownAttendee: CalendarEventAttendee | null = findAttendeeInAddresses(selectedEvent.attendees, ownMailAddresses)
+		const eventType = getEventType(selectedEvent, calendars, ownMailAddresses, userController.user)
+		const hasBusinessFeature = isCustomizationEnabledForCustomer(customer, FeatureType.BusinessFeatureEnabled) || (await userController.isNewPaidPlan())
+		const lazyIndexEntry = async () => (selectedEvent.uid != null ? this.calendarFacade.getEventsByUid(selectedEvent.uid) : null)
+		const popupModel = new CalendarEventPreviewViewModel(
+			selectedEvent,
+			await this.calendarModel(),
+			eventType,
+			hasBusinessFeature,
+			ownAttendee,
+			lazyIndexEntry,
+			async (mode: CalendarOperation) => this.calendarEventModel(mode, selectedEvent, mailboxDetails, mailboxProperties, null),
+		)
+
+		// If we have a preview model we want to display the description
+		// so makes sense to already sanitize it after building the event
+		await popupModel.sanitizeDescription()
+
+		return popupModel
 	}
 }
 

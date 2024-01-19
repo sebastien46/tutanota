@@ -15,6 +15,7 @@ import {
 } from "../../../entities/sys/TypeRefs.js"
 import {
 	assertNotNull,
+	DAY_IN_MILLIS,
 	downcast,
 	flatMap,
 	getFromMap,
@@ -22,7 +23,6 @@ import {
 	groupByAndMap,
 	groupByAndMapUniquely,
 	isNotNull,
-	mapMapAsync,
 	neverNull,
 	ofClass,
 	promiseMap,
@@ -35,26 +35,35 @@ import type { CalendarEvent, CalendarEventUidIndex, CalendarRepeatRule } from ".
 import { CalendarEventTypeRef, CalendarEventUidIndexTypeRef, CalendarGroupRootTypeRef, createCalendarDeleteData } from "../../../entities/tutanota/TypeRefs.js"
 import { DefaultEntityRestCache } from "../../rest/DefaultEntityRestCache.js"
 import { ConnectionError, NotAuthorizedError, NotFoundError, PayloadTooLargeError } from "../../../common/error/RestError.js"
-import { EntityClient } from "../../../common/EntityClient.js"
+import { EntityClient, loadMultipleFromLists } from "../../../common/EntityClient.js"
 import { elementIdPart, getLetId, getListId, isSameId, listIdPart, uint8arrayToCustomId } from "../../../common/utils/EntityUtils.js"
 import { GroupManagementFacade } from "./GroupManagementFacade.js"
 import { SetupMultipleError } from "../../../common/error/SetupMultipleError.js"
 import { ImportError } from "../../../common/error/ImportError.js"
-import { aes128RandomKey, encryptKey, sha256Hash } from "@tutao/tutanota-crypto"
+import { aes256RandomKey, encryptKey, sha256Hash } from "@tutao/tutanota-crypto"
 import { InstanceMapper } from "../../crypto/InstanceMapper.js"
-import { TutanotaError } from "../../../common/error/TutanotaError.js"
+import { TutanotaError } from "@tutao/tutanota-error"
 import { IServiceExecutor } from "../../../common/ServiceRequest.js"
 import { AlarmService } from "../../../entities/sys/Services.js"
 import { CalendarService } from "../../../entities/tutanota/Services.js"
 import { resolveTypeReference } from "../../../common/EntityFunctions.js"
 import { UserFacade } from "../UserFacade.js"
-import { isOfflineError } from "../../../common/utils/ErrorCheckUtils.js"
 import { EncryptedAlarmNotification } from "../../../../native/common/EncryptedAlarmNotification.js"
 import { NativePushFacade } from "../../../../native/common/generatedipc/NativePushFacade.js"
 import { ExposedOperationProgressTracker, OperationId } from "../../../main/OperationProgressTracker.js"
 import { InfoMessageHandler } from "../../../../gui/InfoMessageHandler.js"
 import { ProgrammingError } from "../../../common/error/ProgrammingError.js"
 import { EventWrapper } from "../../../../calendar/export/CalendarImporterDialog.js"
+import {
+	addDaysForEventInstance,
+	addDaysForRecurringEvent,
+	CalendarTimeRange,
+	generateCalendarInstancesInRange,
+} from "../../../../calendar/date/CalendarUtils.js"
+import { CalendarInfo } from "../../../../calendar/model/CalendarModel.js"
+import { geEventElementMaxId, getEventElementMinId } from "../../../common/utils/CommonCalendarUtils.js"
+import { DaysToEvents } from "../../../../calendar/date/CalendarEventsRepository.js"
+import { isOfflineError } from "../../../common/utils/ErrorUtils.js"
 
 assertWorkerOrNode()
 
@@ -99,6 +108,53 @@ export class CalendarFacade {
 	async saveImportedCalendarEvents(eventWrappers: Array<EventWrapper>, operationId: OperationId): Promise<void> {
 		// it is safe to assume that all event uids are set at this time
 		return this.saveCalendarEvents(eventWrappers, (percent) => this.operationProgressTracker.onProgress(operationId, percent))
+	}
+
+	/**
+	 * extend or one month of the given daysToEvents map
+	 *
+	 * @param month only update events that intersect days in this month
+	 * @param calendarInfos update events contained in these calendars
+	 * @param daysToEvents the old version of the map
+	 * @param zone the time zone to consider the event times under
+	 * @returns a new daysToEventsMap where the given month is updated.
+	 */
+	async updateEventMap(
+		month: CalendarTimeRange,
+		calendarInfos: ReadonlyMap<Id, CalendarInfo>,
+		daysToEvents: DaysToEvents,
+		zone: string,
+	): Promise<DaysToEvents> {
+		// Because of the timezones and all day events, we might not load an event which we need to display.
+		// So we add a margin on 24 hours to be sure we load everything we need. We will filter matching
+		// events anyway.
+		const startId = getEventElementMinId(month.start - DAY_IN_MILLIS)
+		const endId = geEventElementMaxId(month.end + DAY_IN_MILLIS)
+
+		// We collect events from all calendars together and then replace map synchronously.
+		// This is important to replace the map synchronously to not get race conditions because we load different months in parallel.
+		// We could replace map more often instead of aggregating events but this would mean creating even more (cals * months) maps.
+		//
+		// Note: there may be issues if we get entity update before other calendars finish loading but the chance is low and we do not
+		// take care of this now.
+		const aggregateEvents: CalendarEvent[] = []
+
+		for (const { groupRoot } of calendarInfos.values()) {
+			const [shortEventsResult, longEventsResult] = await Promise.all([
+				this.cachingEntityClient.loadReverseRangeBetween(CalendarEventTypeRef, groupRoot.shortEvents, endId, startId, 200),
+				this.cachingEntityClient.loadAll(CalendarEventTypeRef, groupRoot.longEvents),
+			])
+			aggregateEvents.push(...shortEventsResult.elements, ...longEventsResult)
+		}
+		const newEvents = new Map<number, Array<CalendarEvent>>(Array.from(daysToEvents.entries()).map(([day, events]) => [day, events.slice()]))
+		for (const e of aggregateEvents) {
+			if (e.repeatRule) {
+				addDaysForRecurringEvent(newEvents, e, month, zone)
+			} else {
+				addDaysForEventInstance(newEvents, e, month, zone)
+			}
+		}
+		return newEvents
 	}
 
 	/**
@@ -185,7 +241,7 @@ export class CalendarFacade {
 		}
 	}
 
-	async saveCalendarEvent(event: CalendarEvent, alarmInfos: ReadonlyArray<AlarmInfo>, oldEvent: CalendarEvent | null): Promise<void> {
+	async saveCalendarEvent(event: CalendarEvent, alarmInfos: ReadonlyArray<AlarmInfoTemplate>, oldEvent: CalendarEvent | null): Promise<void> {
 		if (event._id == null) throw new Error("No id set on the event")
 		if (event._ownerGroup == null) throw new Error("No _ownerGroup is set on the event")
 		if (event.uid == null) throw new Error("no uid set on the event")
@@ -206,7 +262,7 @@ export class CalendarFacade {
 		)
 	}
 
-	async updateCalendarEvent(event: CalendarEvent, newAlarms: ReadonlyArray<AlarmInfo>, existingEvent: CalendarEvent): Promise<void> {
+	async updateCalendarEvent(event: CalendarEvent, newAlarms: ReadonlyArray<AlarmInfoTemplate>, existingEvent: CalendarEvent): Promise<void> {
 		event._id = existingEvent._id
 		event._ownerEncSessionKey = existingEvent._ownerEncSessionKey
 		event._permissions = existingEvent._permissions
@@ -238,6 +294,15 @@ export class CalendarFacade {
 		}
 	}
 
+	/**
+	 * get all the calendar event instances in the given time range that are generated by the given progenitor Ids
+	 */
+	async reifyCalendarSearchResult(start: number, end: number, results: Array<IdTuple>): Promise<Array<CalendarEvent>> {
+		const progenitors = await loadMultipleFromLists(CalendarEventTypeRef, this.cachingEntityClient, results)
+		const range: CalendarTimeRange = { start, end }
+		return generateCalendarInstancesInRange(progenitors, range)
+	}
+
 	async addCalendar(name: string): Promise<{ user: User; group: Group }> {
 		return await this.groupManagementFacade.createCalendar(name)
 	}
@@ -255,7 +320,7 @@ export class CalendarFacade {
 		)
 		// Theoretically we don't need to encrypt anything if we are sending things locally but we use already encrypted data on the client
 		// to store alarms securely.
-		const notificationKey = aes128RandomKey()
+		const notificationKey = aes256RandomKey()
 		await this.encryptNotificationKeyForDevices(notificationKey, alarmNotifications, [pushIdentifier])
 		const requestEntity = createAlarmServicePost({
 			alarmNotifications,
@@ -345,7 +410,7 @@ export class CalendarFacade {
 	}
 
 	private async sendAlarmNotifications(alarmNotifications: Array<AlarmNotification>, pushIdentifierList: Array<PushIdentifier>): Promise<void> {
-		const notificationSessionKey = aes128RandomKey()
+		const notificationSessionKey = aes256RandomKey()
 		return this.encryptNotificationKeyForDevices(notificationSessionKey, alarmNotifications, pushIdentifierList).then(async () => {
 			const requestEntity = createAlarmServicePost({
 				alarmNotifications,
@@ -399,7 +464,7 @@ export class CalendarFacade {
 		user: User,
 		eventsWrapper: Array<{
 			event: CalendarEvent
-			alarms: ReadonlyArray<AlarmInfo>
+			alarms: ReadonlyArray<AlarmInfoTemplate>
 		}>,
 	): Promise<Array<AlarmNotificationsPerEvent>> {
 		const userAlarmInfosAndNotificationsPerEvent: Array<{
@@ -423,12 +488,15 @@ export class CalendarFacade {
 			})
 
 			for (const alarmInfo of alarms) {
-				const userAlarmInfo = createUserAlarmInfo()
-				userAlarmInfo._ownerGroup = ownerGroup
-				userAlarmInfo.alarmInfo = createAlarmInfo()
-				userAlarmInfo.alarmInfo.alarmIdentifier = alarmInfo.alarmIdentifier
-				userAlarmInfo.alarmInfo.trigger = alarmInfo.trigger
-				userAlarmInfo.alarmInfo.calendarRef = calendarRef
+				const userAlarmInfo = createUserAlarmInfo({
+					_ownerGroup: ownerGroup,
+					alarmInfo: createAlarmInfo({
+						alarmIdentifier: alarmInfo.alarmIdentifier,
+						trigger: alarmInfo.trigger,
+						calendarRef: calendarRef,
+					}),
+				})
+
 				const alarmNotification = createAlarmNotificationForEvent(event, userAlarmInfo.alarmInfo, user._id)
 				userAlarmInfoAndNotification.push({
 					alarm: userAlarmInfo,
@@ -485,11 +553,11 @@ function createAlarmNotificationForEvent(event: CalendarEvent, alarmInfo: AlarmI
 }
 
 function createAlarmInfoForAlarmInfo(alarmInfo: AlarmInfo): AlarmInfo {
-	const calendarRef = Object.assign(createCalendarEventRef(), {
+	const calendarRef = createCalendarEventRef({
 		elementId: alarmInfo.calendarRef.elementId,
 		listId: alarmInfo.calendarRef.listId,
 	})
-	return Object.assign(createAlarmInfo(), {
+	return createAlarmInfo({
 		alarmIdentifier: alarmInfo.alarmIdentifier,
 		trigger: alarmInfo.trigger,
 		calendarRef,
@@ -497,7 +565,7 @@ function createAlarmInfoForAlarmInfo(alarmInfo: AlarmInfo): AlarmInfo {
 }
 
 function createRepeatRuleForCalendarRepeatRule(calendarRepeatRule: CalendarRepeatRule): RepeatRule {
-	return Object.assign(createRepeatRule(), {
+	return createRepeatRule({
 		endType: calendarRepeatRule.endType,
 		endValue: calendarRepeatRule.endValue,
 		frequency: calendarRepeatRule.frequency,
@@ -534,8 +602,7 @@ async function loadAlteredInstancesFromIndexEntry(entityClient: EntityClient, in
 	)
 
 	const isAlteredInstance = (e: CalendarEventAlteredInstance): e is CalendarEventAlteredInstance => e.recurrenceId != null && e.uid != null
-	const indexedEventsByList = await mapMapAsync(indexedEventIds, (listId, elementIds) => entityClient.loadMultiple(CalendarEventTypeRef, listId, elementIds))
-	const indexedEvents: Array<CalendarEvent> = Array.from(indexedEventsByList.values()).flat()
+	const indexedEvents = await loadMultipleFromLists(CalendarEventTypeRef, entityClient, indexEntry.alteredInstances)
 	const alteredInstances: Array<CalendarEventAlteredInstance> = indexedEvents.filter(isAlteredInstance)
 	if (indexedEvents.length > alteredInstances.length) {
 		console.warn("there were altered instances indexed that do not have a recurrence Id or uid!")
@@ -558,3 +625,5 @@ export const enum CachingMode {
 	Cached,
 	Bypass,
 }
+
+export type AlarmInfoTemplate = Pick<AlarmInfo, "alarmIdentifier" | "trigger">

@@ -5,11 +5,12 @@ import { elementIdPart, firstBiggerThanSecond, getElementId, getListId, haveSame
 import { assertNotNull, findLastIndex, groupBy, makeSingleUse } from "@tutao/tutanota-utils"
 import { EntityClient } from "../../api/common/EntityClient.js"
 import { LoadingStateTracker } from "../../offline/LoadingState.js"
-import { EntityEventsListener, EntityUpdateData, EventController, isUpdateForTypeRef } from "../../api/main/EventController.js"
+import { EntityEventsListener, EventController } from "../../api/main/EventController.js"
 import { ConversationType, MailFolderType, MailState, OperationType } from "../../api/common/TutanotaConstants.js"
 import { NotAuthorizedError, NotFoundError } from "../../api/common/error/RestError.js"
 import { isOfTypeOrSubfolderOf } from "../../api/common/mail/CommonMailUtils.js"
 import { MailModel } from "../model/MailModel.js"
+import { EntityUpdateData, isUpdateForTypeRef } from "../../api/common/utils/EntityUpdateUtils.js"
 
 export type MailViewerViewModelFactory = (options: CreateMailViewerOptions) => MailViewerViewModel
 

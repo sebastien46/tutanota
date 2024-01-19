@@ -5,7 +5,7 @@ import { AppHeaderAttrs, Header } from "../../gui/Header.js"
 import { Button, ButtonColor, ButtonType } from "../../gui/base/Button.js"
 import { ContactEditor } from "../ContactEditor"
 import type { Contact } from "../../api/entities/tutanota/TypeRefs.js"
-import { ContactTypeRef, createGroupSettings } from "../../api/entities/tutanota/TypeRefs.js"
+import { ContactTypeRef } from "../../api/entities/tutanota/TypeRefs.js"
 import { ContactListView } from "./ContactListView"
 import { lang } from "../../misc/LanguageViewModel"
 import { assertNotNull, clear, getFirstOrThrow, noOp, ofClass } from "@tutao/tutanota-utils"
@@ -38,7 +38,7 @@ import { BaseTopLevelView } from "../../gui/BaseTopLevelView.js"
 import { TopLevelAttrs, TopLevelView } from "../../TopLevelView.js"
 import { stateBgHover } from "../../gui/builtinThemes.js"
 import { ContactCardViewer } from "./ContactCardViewer.js"
-import { MobileContactActionBar } from "./MobileContactActionBar.js"
+import { MobileActionBar } from "./MobileActionBar.js"
 import { appendEmailSignature } from "../../mail/signature/Signature.js"
 import { PartialRecipient } from "../../api/common/recipients/Recipient.js"
 import { newMailEditorFromTemplate } from "../../mail/editor/MailEditor.js"
@@ -119,9 +119,11 @@ export class ContactView extends BaseTopLevelView implements TopLevelView<Contac
 					}),
 			},
 			ColumnType.Foreground,
-			size.first_col_min_width,
-			size.first_col_max_width,
-			() => lang.get("folderTitle_label"),
+			{
+				minWidth: size.first_col_max_width,
+				maxWidth: size.first_col_max_width,
+				headerCenter: () => lang.get("folderTitle_label"),
+			},
 		)
 
 		this.listColumn = new ViewColumn(
@@ -130,9 +132,11 @@ export class ContactView extends BaseTopLevelView implements TopLevelView<Contac
 					this.inContactListView() ? this.renderContactListRecipientColumn(vnode.attrs.header) : this.renderContactListColumn(vnode.attrs.header),
 			},
 			ColumnType.Background,
-			size.second_col_min_width,
-			size.second_col_max_width,
-			() => this.getHeaderLabel(),
+			{
+				minWidth: size.second_col_min_width,
+				maxWidth: size.second_col_max_width,
+				headerCenter: () => this.getHeaderLabel(),
+			},
 		)
 
 		this.detailsColumn = new ViewColumn(
@@ -159,10 +163,11 @@ export class ContactView extends BaseTopLevelView implements TopLevelView<Contac
 					}),
 			},
 			ColumnType.Background,
-			size.third_col_min_width,
-			size.third_col_max_width,
-			undefined,
-			() => this.getHeaderLabel(),
+			{
+				minWidth: size.third_col_min_width,
+				maxWidth: size.third_col_max_width,
+				ariaLabel: () => this.getHeaderLabel(),
+			},
 		)
 
 		this.viewSlider = new ViewSlider([this.folderColumn, this.listColumn, this.detailsColumn])
@@ -311,12 +316,30 @@ export class ContactView extends BaseTopLevelView implements TopLevelView<Contac
 				bottomNav:
 					styles.isSingleColumnLayout() && this.viewSlider.focusedColumn === this.detailsColumn && !this.showingListView()
 						? this.inContactListView()
-							? m(MobileContactActionBar, {
-									deleteAction: this.canEditSelectedContactList() ? () => this.contactListViewModel.deleteSelectedEntries() : undefined,
+							? m(MobileActionBar, {
+									actions: this.canEditSelectedContactList()
+										? [
+												{
+													icon: Icons.Trash,
+													title: "delete_action",
+													action: () => this.contactListViewModel.deleteSelectedEntries(),
+												},
+										  ]
+										: [],
 							  })
-							: m(MobileContactActionBar, {
-									editAction: () => this.editSelectedContact(),
-									deleteAction: () => this.deleteSelectedContacts(),
+							: m(MobileActionBar, {
+									actions: [
+										{
+											icon: Icons.Edit,
+											title: "edit_action",
+											action: () => this.editSelectedContact(),
+										},
+										{
+											icon: Icons.Trash,
+											title: "delete_action",
+											action: () => this.deleteSelectedContacts(),
+										},
+									],
 							  })
 						: (styles.isSingleColumnLayout() &&
 								this.viewSlider.focusedColumn === this.listColumn &&
@@ -657,11 +680,6 @@ export class ContactView extends BaseTopLevelView implements TopLevelView<Contac
 
 		if (existingGroupSettings) {
 			existingGroupSettings.name = newName
-		} else {
-			const newGroupSettings = Object.assign(createGroupSettings(), {
-				group: contactListInfo.group,
-				name: newName,
-			})
 		}
 
 		locator.entityClient.update(userSettingsGroupRoot)
@@ -798,7 +816,13 @@ export class ContactView extends BaseTopLevelView implements TopLevelView<Contac
 		if (this.viewSlider.focusedColumn === this.detailsColumn) {
 			this.viewSlider.focus(this.listColumn)
 			return true
-		} else if (this.showingListView()) {
+		} else if (
+			this.showingListView() &&
+			(this.contactViewModel.listModel.state.inMultiselect ||
+				(this.contactListViewModel.listModel && this.contactListViewModel.listModel?.state.inMultiselect))
+		) {
+			// Just try to empty the list of selected items the user is on
+			// multiselect mode
 			this.contactViewModel.listModel.selectNone()
 			this.contactListViewModel.listModel?.selectNone()
 

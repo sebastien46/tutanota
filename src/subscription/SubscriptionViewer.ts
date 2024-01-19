@@ -33,8 +33,6 @@ import stream from "mithril/stream"
 import Stream from "mithril/stream"
 import * as SignOrderAgreementDialog from "./SignOrderProcessingAgreementDialog"
 import { NotFoundError } from "../api/common/error/RestError"
-import type { EntityUpdateData } from "../api/main/EventController"
-import { isUpdateForTypeRef } from "../api/main/EventController"
 import {
 	getCurrentCount,
 	getTotalStorageCapacityPerCustomer,
@@ -66,6 +64,7 @@ import { DropDownSelector, SelectorItemList } from "../gui/base/DropDownSelector
 import { IconButton, IconButtonAttrs } from "../gui/base/IconButton.js"
 import { ButtonSize } from "../gui/base/ButtonSize.js"
 import { getDisplayNameOfPlanType } from "./FeatureListProvider"
+import { EntityUpdateData, isUpdateForTypeRef } from "../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
 const DAY = 1000 * 60 * 60 * 24

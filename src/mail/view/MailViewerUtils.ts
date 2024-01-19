@@ -1,7 +1,7 @@
 import type { ImageHandler } from "../model/MailUtils"
-import { getMailAddressDisplayText, loadMailDetails } from "../model/MailUtils"
+import { loadMailDetails } from "../model/MailUtils"
 import { ALLOWED_IMAGE_FORMATS, Keys, MailReportType, MAX_BASE64_IMAGE_SIZE } from "../../api/common/TutanotaConstants"
-import { neverNull, ofClass, uint8ArrayToBase64 } from "@tutao/tutanota-utils"
+import { ofClass, uint8ArrayToBase64 } from "@tutao/tutanota-utils"
 import { InfoLink, lang } from "../../misc/LanguageViewModel"
 import { Dialog } from "../../gui/base/Dialog"
 import { DataFile } from "../../api/common/DataFile"
@@ -15,7 +15,6 @@ import { UserError } from "../../api/main/UserError.js"
 import { showUserError } from "../../misc/ErrorHandlerImpl.js"
 import { ContentBlockingStatus, MailViewerViewModel } from "./MailViewerViewModel.js"
 import { DropdownButtonAttrs } from "../../gui/base/Dropdown.js"
-import { BootIcons } from "../../gui/base/icons/BootIcons.js"
 import { Icons } from "../../gui/base/icons/Icons.js"
 import { client } from "../../misc/ClientDetector.js"
 import { showProgressDialog } from "../../gui/dialogs/ProgressDialog.js"
@@ -143,6 +142,30 @@ export function mailViewerMoreActions(viewModel: MailViewerViewModel, showReadBu
 		}
 	}
 
+	if (viewModel.canPersistBlockingStatus() && viewModel.isShowingExternalContent()) {
+		moreButtons.push({
+			label: "disallowExternalContent_action",
+			click: () => viewModel.setContentBlockingStatus(ContentBlockingStatus.Block),
+			icon: Icons.Picture,
+		})
+	}
+
+	if (viewModel.canPersistBlockingStatus() && viewModel.isBlockingExternalImages()) {
+		moreButtons.push({
+			label: "showImages_action",
+			click: () => viewModel.setContentBlockingStatus(ContentBlockingStatus.Show),
+			icon: Icons.Picture,
+		})
+	}
+
+	if (viewModel.isListUnsubscribe()) {
+		moreButtons.push({
+			label: "unsubscribe_action",
+			click: () => unsubscribe(viewModel),
+			icon: Icons.Cancel,
+		})
+	}
+
 	if (!client.isMobileDevice() && viewModel.canExport()) {
 		moreButtons.push({
 			label: "export_action",
@@ -156,14 +179,6 @@ export function mailViewerMoreActions(viewModel: MailViewerViewModel, showReadBu
 			label: "print_action",
 			click: () => window.print(),
 			icon: Icons.Print,
-		})
-	}
-
-	if (viewModel.isListUnsubscribe()) {
-		moreButtons.push({
-			label: "unsubscribe_action",
-			click: () => unsubscribe(viewModel),
-			icon: Icons.Cancel,
 		})
 	}
 
@@ -183,21 +198,8 @@ export function mailViewerMoreActions(viewModel: MailViewerViewModel, showReadBu
 		})
 	}
 
-	if (viewModel.canPersistBlockingStatus() && viewModel.isShowingExternalContent()) {
-		moreButtons.push({
-			label: "disallowExternalContent_action",
-			click: () => viewModel.setContentBlockingStatus(ContentBlockingStatus.Block),
-			icon: Icons.Picture,
-		})
-	}
-
-	if (viewModel.canPersistBlockingStatus() && viewModel.isBlockingExternalImages()) {
-		moreButtons.push({
-			label: "showImages_action",
-			click: () => viewModel.setContentBlockingStatus(ContentBlockingStatus.Show),
-			icon: Icons.Picture,
-		})
-	}
+	// adding more optional buttons? put them above the report action so the new button
+	// is not sometimes where the report action usually sits.
 
 	return moreButtons
 }

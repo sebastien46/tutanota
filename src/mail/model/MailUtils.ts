@@ -3,7 +3,9 @@ import {
 	createContact,
 	createContactMailAddress,
 	createEncryptedMailAddress,
+	Header,
 	MailBodyTypeRef,
+	MailHeaders,
 	MailHeadersTypeRef,
 } from "../../api/entities/tutanota/TypeRefs.js"
 import {
@@ -15,9 +17,8 @@ import {
 	MailState,
 	MAX_ATTACHMENT_SIZE,
 	ReplyType,
-	TUTANOTA_MAIL_ADDRESS_DOMAINS,
 } from "../../api/common/TutanotaConstants"
-import { assertNotNull, contains, endsWith, first, neverNull } from "@tutao/tutanota-utils"
+import { assertNotNull, contains, first, neverNull } from "@tutao/tutanota-utils"
 import { assertMainOrNode, isDesktop } from "../../api/common/Env"
 import type { LoginController } from "../../api/main/LoginController"
 import type { Language, TranslationKey } from "../../misc/LanguageViewModel"
@@ -35,17 +36,13 @@ import { fullNameToFirstAndLastName, mailAddressToFirstAndLastName } from "../..
 import type { Attachment } from "../editor/SendMailModel"
 import { getListId } from "../../api/common/utils/EntityUtils"
 import { isDetailsDraft, isLegacyMail, MailWrapper } from "../../api/common/MailWrapper.js"
-import { getLegacyMailHeaders, getMailHeaders } from "../../api/common/utils/Utils.js"
 import { FolderSystem } from "../../api/common/mail/FolderSystem.js"
 import { ListFilter } from "../../misc/ListModel.js"
 import { MailFacade } from "../../api/worker/facades/lazy/MailFacade.js"
+import { getDisplayedSender, isExcludedMailAddress, MailAddressAndName } from "../../api/common/mail/CommonMailUtils.js"
 
 assertMainOrNode()
 export const LINE_BREAK = "<br>"
-
-export function isTutanotaMailAddress(mailAddress: string): boolean {
-	return TUTANOTA_MAIL_ADDRESS_DOMAINS.some((tutaDomain) => mailAddress.endsWith("@" + tutaDomain))
-}
 
 /**
  * Creates a contact with an email address and a name.
@@ -57,19 +54,36 @@ export function createNewContact(user: User, mailAddress: string, name: string):
 	// prepare some contact information. it is only saved if the mail is sent securely
 	// use the name or mail address to extract first and last name. first part is used as first name, all other parts as last name
 	let firstAndLastName = name.trim() !== "" ? fullNameToFirstAndLastName(name) : mailAddressToFirstAndLastName(mailAddress)
-	let contact = createContact()
-	contact._owner = user._id
-	contact._ownerGroup = assertNotNull(
-		user.memberships.find((m) => m.groupType === GroupType.Contact),
-		"called createNewContact as user without contact group mship",
-	).group
-	contact.firstName = firstAndLastName.firstName
-	contact.lastName = firstAndLastName.lastName
-	let ma = createContactMailAddress()
-	ma.address = mailAddress
-	ma.type = ContactAddressType.OTHER
-	ma.customTypeName = ""
-	contact.mailAddresses.push(ma)
+	let contact = createContact({
+		_ownerGroup: assertNotNull(
+			user.memberships.find((m) => m.groupType === GroupType.Contact),
+			"called createNewContact as user without contact group mship",
+		).group,
+		_owner: user._id,
+		firstName: firstAndLastName.firstName,
+		lastName: firstAndLastName.lastName,
+		mailAddresses: [
+			createContactMailAddress({
+				address: mailAddress,
+				type: ContactAddressType.OTHER,
+				customTypeName: "",
+			}),
+		],
+		autoTransmitPassword: "",
+		birthdayIso: null,
+		comment: "",
+		company: "",
+		nickname: null,
+		oldBirthdayDate: null,
+		presharedPassword: null,
+		role: "",
+		title: null,
+		addresses: [],
+		oldBirthdayAggregate: null,
+		phoneNumbers: [],
+		photo: null,
+		socialIds: [],
+	})
 	return contact
 }
 
@@ -84,18 +98,19 @@ export function getMailAddressDisplayText(name: string | null, mailAddress: stri
 }
 
 export function getSenderHeading(mail: Mail, preferNameOnly: boolean) {
-	if (isExcludedMailAddress(mail.sender.address)) {
+	const sender = getDisplayedSender(mail)
+	if (isExcludedMailAddress(sender.address)) {
 		return ""
 	} else {
-		return getMailAddressDisplayText(mail.sender.name, mail.sender.address, preferNameOnly)
+		return getMailAddressDisplayText(sender.name, sender.address, preferNameOnly)
 	}
 }
 
-export function getSenderAddressDisplay(mail: Mail): string {
-	if (isExcludedMailAddress(mail.sender.address)) {
+export function getSenderAddressDisplay(sender: MailAddressAndName): string {
+	if (isExcludedMailAddress(sender.address)) {
 		return ""
 	} else {
-		return mail.sender.address
+		return sender.address
 	}
 }
 
@@ -125,22 +140,6 @@ export function getSenderOrRecipientHeading(mail: Mail, preferNameOnly: boolean)
 	} else {
 		return getRecipientHeading(mail, preferNameOnly)
 	}
-}
-
-export function getSenderOrRecipientHeadingTooltip(mail: Mail): string {
-	if (isTutanotaTeamMail(mail) && !isExcludedMailAddress(mail.sender.address)) {
-		return lang.get("tutaoInfo_msg")
-	} else {
-		return ""
-	}
-}
-
-export function isTutanotaTeamMail(mail: Mail): boolean {
-	return mail.confidential && mail.state === MailState.RECEIVED && endsWith(mail.sender.address, "@tutao.de")
-}
-
-export function isExcludedMailAddress(mailAddress: string): boolean {
-	return mailAddress === "no-reply@tutao.de"
 }
 
 /**
@@ -408,6 +407,14 @@ export async function loadMailDetails(mailFacade: MailFacade, entityClient: Enti
 		const mailDetailsId = neverNull(mail.mailDetails)
 		return mailFacade.loadMailDetailsBlob(mail).then((d) => MailWrapper.details(mail, d))
 	}
+}
+
+export function getLegacyMailHeaders(headers: MailHeaders): string {
+	return headers.compressedHeaders ?? headers.headers ?? ""
+}
+
+export function getMailHeaders(headers: Header): string {
+	return headers.compressedHeaders ?? headers.headers ?? ""
 }
 
 export async function loadMailHeaders(entityClient: EntityClient, mailWrapper: MailWrapper): Promise<string | null> {

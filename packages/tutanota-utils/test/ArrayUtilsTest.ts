@@ -17,7 +17,7 @@ import {
 	partitionAsync,
 	splitInChunks,
 	symmetricDifference,
-} from "../lib/ArrayUtils.js"
+} from "../lib/index.js"
 
 type ObjectWithId = {
 	v: number
@@ -798,7 +798,23 @@ o.spec("array utils", function () {
 		})
 	})
 
-	o.spec("partitionAsync", async function () {
+	o.spec("partitionTypeGuard", function () {
+		o.test("partitionTypeGuard infers the types correctly for type guards", function () {
+			const array: ReadonlyArray<number | string> = ["1", 2, "3", 4]
+
+			function isString(item: number | string): item is string {
+				return typeof item === "string"
+			}
+
+			const [strings, numbers] = partition(array, isString)
+			strings satisfies Array<string>
+			numbers satisfies Array<number>
+			o(strings).deepEquals(["1", "3"])
+			o(numbers).deepEquals([2, 4])
+		})
+	})
+
+	o.spec("partitionAsync", function () {
 		const test = function (c: [string, any[], (any) => boolean, [any[], any[]]]) {
 			const [name, input, predicate, output] = c
 			o(name, async function () {

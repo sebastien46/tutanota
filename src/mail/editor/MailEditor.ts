@@ -48,7 +48,6 @@ import type { InlineImages } from "../view/MailViewer"
 import { FileOpenError } from "../../api/common/error/FileOpenError"
 import type { lazy } from "@tutao/tutanota-utils"
 import { assertNotNull, cleanMatch, downcast, isNotNull, noOp, ofClass, typedValues } from "@tutao/tutanota-utils"
-import { isCustomizationEnabledForCustomer } from "../../api/common/utils/Utils"
 import { createInlineImage, replaceCidsWithInlineImages, replaceInlineImagesWithCids } from "../view/MailGuiUtils"
 import { client } from "../../misc/ClientDetector"
 import { appendEmailSignature } from "../signature/Signature"
@@ -70,7 +69,7 @@ import { showUserError } from "../../misc/ErrorHandlerImpl"
 import { MailRecipientsTextField } from "../../gui/MailRecipientsTextField.js"
 import { getContactDisplayName } from "../../contacts/model/ContactUtils"
 import { ResolvableRecipient } from "../../api/main/RecipientsModel"
-import { isOfflineError } from "../../api/common/utils/ErrorCheckUtils.js"
+
 import { animateToolbar, RichTextToolbar } from "../../gui/base/RichTextToolbar.js"
 import { readLocalFiles } from "../../file/FileController"
 import { IconButton, IconButtonAttrs } from "../../gui/base/IconButton.js"
@@ -79,7 +78,7 @@ import { BootIcons } from "../../gui/base/icons/BootIcons.js"
 import { ButtonSize } from "../../gui/base/ButtonSize.js"
 import { DialogInjectionRightAttrs } from "../../gui/base/DialogInjectionRight.js"
 import { KnowledgebaseDialogContentAttrs } from "../../knowledgebase/view/KnowledgeBaseDialogContent.js"
-import { MailWrapper } from "../../api/common/MailWrapper.js"
+import { isLegacyMail, MailWrapper } from "../../api/common/MailWrapper.js"
 import { RecipientsSearchModel } from "../../misc/RecipientsSearchModel.js"
 import { createDataFile, DataFile } from "../../api/common/DataFile.js"
 import { AttachmentBubble } from "../../gui/AttachmentBubble.js"
@@ -88,6 +87,8 @@ import { Status, StatusField } from "../../gui/base/StatusField.js"
 import { ContentBlockingStatus } from "../view/MailViewerViewModel.js"
 import { canSeeTutaLinks } from "../../gui/base/GuiUtils.js"
 import { InfoBanner } from "../../gui/base/InfoBanner.js"
+import { isCustomizationEnabledForCustomer } from "../../api/common/utils/CustomerUtils.js"
+import { isOfflineError } from "../../api/common/utils/ErrorUtils.js"
 
 export type MailEditorAttrs = {
 	model: SendMailModel
@@ -146,6 +147,9 @@ export class MailEditor implements Component<MailEditorAttrs> {
 	private recipientShowConfidential: Map<string, boolean> = new Map()
 	private blockExternalContent: boolean
 	private readonly alwaysBlockExternalContent: boolean = false
+	// if we're set to block external content, but there is no content to block,
+	// we don't want to show the banner.
+	private blockedExternalContent: number = 0
 
 	constructor(vnode: Vnode<MailEditorAttrs>) {
 		const a = vnode.attrs
@@ -165,6 +169,7 @@ export class MailEditor implements Component<MailEditorAttrs> {
 			const sanitized = htmlSanitizer.sanitizeFragment(html, {
 				blockExternalContent: !isPaste && this.blockExternalContent,
 			})
+			this.blockedExternalContent = sanitized.blockedExternalContent
 
 			this.mentionedInlineImages = sanitized.inlineImageCids
 			return sanitized.fragment
@@ -179,6 +184,7 @@ export class MailEditor implements Component<MailEditorAttrs> {
 		// call this async because the editor is not initialized before this mail editor dialog is shown
 		this.editor.initialized.promise.then(() => {
 			this.editor.setHTML(model.getBody())
+
 			this.processInlineImages()
 
 			// Add mutation observer to remove attachments when corresponding DOM element is removed
@@ -504,7 +510,7 @@ export class MailEditor implements Component<MailEditorAttrs> {
 	}
 
 	private renderExternalContentBanner(attrs: MailEditorAttrs): Children | null {
-		if (!this.blockExternalContent || this.alwaysBlockExternalContent) {
+		if (!this.blockExternalContent || this.alwaysBlockExternalContent || this.blockedExternalContent === 0) {
 			return null
 		}
 
@@ -1048,20 +1054,32 @@ export async function newMailEditor(mailboxDetails: MailboxDetail): Promise<Dial
 	return newMailEditorFromTemplate(detailsProperties.mailboxDetails, {}, "", signature)
 }
 
-async function getExternalContentRules(model: SendMailModel, currentStatus: boolean) {
+async function getExternalContentRulesForEditor(model: SendMailModel, currentStatus: boolean) {
 	let contentRules
 	const previousMail = model.getPreviousMail()
 
 	if (!previousMail) {
 		contentRules = {
 			alwaysBlockExternalContent: false,
-			blockExternalContent: true,
+			// external content in a mail for which we don't have a
+			// previous mail must have been put there by us.
+			blockExternalContent: false,
 		}
 	} else {
 		const externalImageRule = await locator.configFacade.getExternalImageRule(previousMail.sender.address).catch((e: unknown) => {
 			console.log("Error getting external image rule:", e)
 			return ExternalImageRule.None
 		})
+
+		let isAuthenticatedMail
+		if (previousMail.authStatus !== null) {
+			isAuthenticatedMail = previousMail.authStatus === MailAuthenticationStatus.AUTHENTICATED
+		} else if (!isLegacyMail(previousMail)) {
+			const mailDetails = await locator.mailFacade.loadMailDetailsBlob(previousMail)
+			isAuthenticatedMail = mailDetails.authStatus === MailAuthenticationStatus.AUTHENTICATED
+		} else {
+			isAuthenticatedMail = false
+		}
 
 		if (externalImageRule === ExternalImageRule.Block || (externalImageRule === ExternalImageRule.None && model.isUserPreviousSender())) {
 			contentRules = {
@@ -1070,7 +1088,7 @@ async function getExternalContentRules(model: SendMailModel, currentStatus: bool
 				alwaysBlockExternalContent: externalImageRule === ExternalImageRule.Block,
 				blockExternalContent: true,
 			}
-		} else if (externalImageRule === ExternalImageRule.Allow && model.getPreviousMail()?.authStatus === MailAuthenticationStatus.AUTHENTICATED) {
+		} else if (externalImageRule === ExternalImageRule.Allow && isAuthenticatedMail) {
 			contentRules = {
 				alwaysBlockExternalContent: false,
 				blockExternalContent: false,
@@ -1096,7 +1114,7 @@ export async function newMailEditorAsResponse(
 	const model = await locator.sendMailModel(detailsProperties.mailboxDetails, detailsProperties.mailboxProperties)
 	await model.initAsResponse(args, inlineImages)
 
-	const externalImageRules = await getExternalContentRules(model, blockExternalContent)
+	const externalImageRules = await getExternalContentRulesForEditor(model, blockExternalContent)
 	return createMailEditorDialog(model, externalImageRules?.blockExternalContent, externalImageRules?.alwaysBlockExternalContent)
 }
 
@@ -1110,7 +1128,7 @@ export async function newMailEditorFromDraft(
 	const detailsProperties = await getMailboxDetailsAndProperties(mailboxDetails)
 	const model = await locator.sendMailModel(detailsProperties.mailboxDetails, detailsProperties.mailboxProperties)
 	await model.initWithDraft(attachments, mailWrapper, inlineImages)
-	const externalImageRules = await getExternalContentRules(model, blockExternalContent)
+	const externalImageRules = await getExternalContentRulesForEditor(model, blockExternalContent)
 	return createMailEditorDialog(model, externalImageRules?.blockExternalContent, externalImageRules?.alwaysBlockExternalContent)
 }
 
