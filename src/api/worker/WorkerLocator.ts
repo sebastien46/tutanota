@@ -47,7 +47,7 @@ import { NativePushFacadeSendDispatcher } from "../../native/common/generatedipc
 import { NativeCryptoFacadeSendDispatcher } from "../../native/common/generatedipc/NativeCryptoFacadeSendDispatcher"
 import { random } from "@tutao/tutanota-crypto"
 import { ExportFacadeSendDispatcher } from "../../native/common/generatedipc/ExportFacadeSendDispatcher.js"
-import { assertNotNull, delay, lazyAsync, lazyMemoized, ofClass } from "@tutao/tutanota-utils"
+import { assertNotNull, delay, lazyAsync, lazyMemoized } from "@tutao/tutanota-utils"
 import { InterWindowEventFacadeSendDispatcher } from "../../native/common/generatedipc/InterWindowEventFacadeSendDispatcher.js"
 import { SqlCipherFacadeSendDispatcher } from "../../native/common/generatedipc/SqlCipherFacadeSendDispatcher.js"
 import { EntropyFacade } from "./facades/EntropyFacade.js"
@@ -65,6 +65,7 @@ import { Argon2idFacade, NativeArgon2idFacade, WASMArgon2idFacade } from "./faca
 import { DomainConfigProvider } from "../common/DomainConfigProvider.js"
 import { KyberFacade, NativeKyberFacade, WASMKyberFacade } from "./facades/KyberFacade.js"
 import { PQFacade } from "./facades/PQFacade.js"
+import { PdfWriter } from "./pdf/PdfWriter.js"
 
 assertWorkerOrNode()
 
@@ -114,6 +115,7 @@ export type WorkerLocatorType = {
 	native: NativeInterface
 	workerFacade: WorkerFacade
 	sqlCipherFacade: SqlCipherFacade
+	pdfWriter: lazyAsync<PdfWriter>
 
 	// used to cache between resets
 	_browserData: BrowserData
@@ -159,6 +161,10 @@ export async function initLocator(worker: WorkerImpl, browserData: BrowserData) 
 		}
 	} else {
 		offlineStorageProvider = async () => null
+	}
+	locator.pdfWriter = async () => {
+		const { PdfWriter } = await import("./pdf/PdfWriter.js")
+		return new PdfWriter(new TextEncoder(), undefined)
 	}
 
 	const maybeUninitializedStorage = new LateInitializedCacheStorageImpl(worker, offlineStorageProvider)
@@ -300,6 +306,7 @@ export async function initLocator(worker: WorkerImpl, browserData: BrowserData) 
 			await locator.booking(),
 			locator.crypto,
 			mainInterface.operationProgressTracker,
+			locator.pdfWriter,
 			locator.pqFacade,
 		)
 	})
@@ -389,36 +396,35 @@ export async function initLocator(worker: WorkerImpl, browserData: BrowserData) 
 
 const RETRY_TIMOUT_AFTER_INIT_INDEXER_ERROR_MS = 30000
 
-function initIndexer(worker: WorkerImpl, cacheInfo: CacheInfo): Promise<void> {
-	return locator.indexer().then((indexer) => {
-		return indexer
-			.init({
-				user: assertNotNull(locator.user.getUser()),
-				userGroupKey: locator.user.getUserGroupKey(),
-				cacheInfo,
-			})
-			.catch(
-				ofClass(ServiceUnavailableError, () => {
-					console.log("Retry init indexer in 30 seconds after ServiceUnavailableError")
-					return delay(RETRY_TIMOUT_AFTER_INIT_INDEXER_ERROR_MS).then(() => {
-						console.log("_initIndexer after ServiceUnavailableError")
-						return initIndexer(worker, cacheInfo)
-					})
-				}),
-			)
-			.catch(
-				ofClass(ConnectionError, () => {
-					console.log("Retry init indexer in 30 seconds after ConnectionError")
-					return delay(RETRY_TIMOUT_AFTER_INIT_INDEXER_ERROR_MS).then(() => {
-						console.log("_initIndexer after ConnectionError")
-						return initIndexer(worker, cacheInfo)
-					})
-				}),
-			)
-			.catch((e) => {
-				worker.sendError(e)
-			})
-	})
+async function initIndexer(worker: WorkerImpl, cacheInfo: CacheInfo): Promise<void> {
+	const indexer = await locator.indexer()
+	try {
+		await indexer.init({
+			user: assertNotNull(locator.user.getUser()),
+			userGroupKey: locator.user.getUserGroupKey(),
+			cacheInfo,
+		})
+	} catch (e) {
+		if (e instanceof ServiceUnavailableError) {
+			console.log("Retry init indexer in 30 seconds after ServiceUnavailableError")
+			await delay(RETRY_TIMOUT_AFTER_INIT_INDEXER_ERROR_MS)
+			console.log("_initIndexer after ServiceUnavailableError")
+			return initIndexer(worker, cacheInfo)
+		} else if (e instanceof ConnectionError) {
+			console.log("Retry init indexer in 30 seconds after ConnectionError")
+			await delay(RETRY_TIMOUT_AFTER_INIT_INDEXER_ERROR_MS)
+			console.log("_initIndexer after ConnectionError")
+			return initIndexer(worker, cacheInfo)
+		} else {
+			// not awaiting
+			worker.sendError(e)
+			return
+		}
+	}
+	if (cacheInfo.isPersistent && cacheInfo.isNewOfflineDb) {
+		// not awaiting
+		indexer.enableMailIndexing()
+	}
 }
 
 export async function resetLocator(): Promise<void> {

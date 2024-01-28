@@ -1,7 +1,7 @@
 import m, { Children } from "mithril"
 import { assertMainOrNode, isIOSApp } from "../api/common/Env"
 import { assertNotNull, neverNull, noOp, ofClass, promiseMap } from "@tutao/tutanota-utils"
-import { lang, TranslationKey } from "../misc/LanguageViewModel"
+import { InfoLink, lang, TranslationKey } from "../misc/LanguageViewModel"
 import type { AccountingInfo, Booking, Customer, InvoiceInfo } from "../api/entities/sys/TypeRefs.js"
 import { AccountingInfoTypeRef, BookingTypeRef, createDebitServicePutData, CustomerTypeRef, InvoiceInfoTypeRef } from "../api/entities/sys/TypeRefs.js"
 import { HtmlEditor, HtmlEditorMode } from "../gui/editor/HtmlEditor"
@@ -35,6 +35,8 @@ import { DebitService } from "../api/entities/sys/Services"
 import { IconButton } from "../gui/base/IconButton.js"
 import { ButtonSize } from "../gui/base/ButtonSize.js"
 import { formatNameAndAddress } from "../api/common/utils/CommonFormatter.js"
+import { client } from "../misc/ClientDetector.js"
+import { DeviceType } from "../misc/ClientConstants.js"
 import { EntityUpdateData, isUpdateForTypeRef } from "../api/common/utils/EntityUpdateUtils.js"
 
 assertMainOrNode()
@@ -254,13 +256,25 @@ export class PaymentViewer implements UpdatableSettingsViewer {
 							title: "download_action",
 							icon: Icons.Download,
 							size: ButtonSize.Compact,
-							click: () => {
-								showProgressDialog("pleaseWait_msg", locator.customerFacade.downloadInvoice(neverNull(posting.invoiceNumber))).then(
-									(pdfInvoice) => locator.fileController.saveDataFile(pdfInvoice),
-								)
-							},
+							click: () => this.doInvoiceDownload(posting),
 					  }
 					: null,
+		}
+	}
+
+	private async doInvoiceDownload(posting: CustomerAccountPosting): Promise<unknown> {
+		if (client.compressionStreamSupported()) {
+			return showProgressDialog("pleaseWait_msg", locator.customerFacade.generatePdfInvoice(neverNull(posting.invoiceNumber))).then((pdfInvoice) =>
+				locator.fileController.saveDataFile(pdfInvoice),
+			)
+		} else {
+			if (client.device == DeviceType.ANDROID) {
+				return Dialog.message("invoiceFailedWebview_msg", () => m("div", m("a", { href: InfoLink.Webview, target: "_blank" }, InfoLink.Webview)))
+			} else if (client.isIos()) {
+				return Dialog.message("invoiceFailedIOS_msg")
+			} else {
+				return Dialog.message("invoiceFailedBrowser_msg")
+			}
 		}
 	}
 

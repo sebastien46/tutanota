@@ -15,7 +15,17 @@ import {
 	TooManyRequestsError,
 } from "../api/common/error/RestError"
 import { CancelledError } from "../api/common/error/CancelledError"
-import { ApprovalStatus, getCustomerApprovalStatus, KdfType } from "../api/common/TutanotaConstants"
+import {
+	ApprovalStatus,
+	AvailablePlans,
+	AvailablePlanType,
+	getCustomerApprovalStatus,
+	KdfType,
+	NewBusinessPlans,
+	NewPaidPlans,
+	NewPersonalPlans,
+	SubscriptionType,
+} from "../api/common/TutanotaConstants"
 import type { ResetAction } from "../login/recover/RecoverLoginDialog"
 import { showProgressDialog } from "../gui/dialogs/ProgressDialog"
 import { UserError } from "../api/main/UserError"
@@ -29,6 +39,7 @@ import { LoginState } from "../login/LoginViewModel.js"
 
 /**
  * Shows warnings if the invoices are not paid or the registration is not approved yet.
+ * @param logins The `LoginController` used to retrieve the current users customer information from.
  * @param includeInvoiceNotPaidForAdmin If true, also shows a warning for an admin if the invoice is not paid (use at login), if false does not show this warning (use when sending an email).
  * @param defaultStatus This status is used if the actual status on the customer is "0"
  * @returns True if the user may still send emails, false otherwise.
@@ -172,11 +183,12 @@ export async function showSignupDialog(urlParams: Params) {
 	const subscriptionParams = getSubscriptionParameters(urlParams)
 	const registrationDataId = getRegistrationDataIdFromParams(urlParams)
 	const referralCode = getReferralCodeFromParams(urlParams)
+	const availablePlans = getAvailablePlansFromSubscriptionParameters(subscriptionParams)
 	await showProgressDialog(
 		"loading_msg",
 		locator.worker.initialized.then(async () => {
 			const { loadSignupWizard } = await import("../subscription/UpgradeSubscriptionWizard")
-			await loadSignupWizard(subscriptionParams, registrationDataId, referralCode)
+			await loadSignupWizard(subscriptionParams, registrationDataId, referralCode, availablePlans)
 		}),
 	).catch(
 		ofClass(UserError, async (e) => {
@@ -188,16 +200,51 @@ export async function showSignupDialog(urlParams: Params) {
 	)
 }
 
-function getSubscriptionParameters(hashParams: Params): SubscriptionParameters | null {
-	if (typeof hashParams.subscription === "string" && typeof hashParams.type === "string" && typeof hashParams.interval === "string") {
-		const { subscription, type, interval } = hashParams
-		return {
-			subscription,
-			type,
-			interval,
+function getAvailablePlansFromSubscriptionParameters(params: SubscriptionParameters | null): AvailablePlanType[] {
+	// Default to all available plans if the params do not have the needed information
+	if (params == null || params.type == null) return AvailablePlans
+
+	try {
+		const type = stringToSubscriptionType(params.type)
+		switch (type) {
+			case SubscriptionType.Business:
+				return NewBusinessPlans
+			case SubscriptionType.Personal:
+				return NewPersonalPlans
+			case SubscriptionType.PaidPersonal:
+				return NewPaidPlans.filter((paidPlan) => NewPersonalPlans.includes(paidPlan))
 		}
-	} else {
-		return null
+	} catch (e) {
+		// If params.type is not a valid subscription type, return the default value
+		return AvailablePlans
+	}
+}
+
+export function stringToSubscriptionType(string: string): SubscriptionType {
+	switch (string.toLowerCase()) {
+		case "business":
+			return SubscriptionType.Business
+		case "private":
+			return SubscriptionType.Personal
+		case "privatepaid":
+			return SubscriptionType.PaidPersonal
+		default:
+			throw new Error(`Failed to get subscription type: ${string}`)
+	}
+}
+
+function getSubscriptionParameters(hashParams: Params): SubscriptionParameters | null {
+	const { subscription, type, interval } = hashParams
+	const isSubscriptionString = typeof subscription === "string"
+	const isTypeString = typeof type === "string"
+	const isIntervalString = typeof interval === "string"
+
+	if (!isSubscriptionString && !isTypeString && !isIntervalString) return null
+
+	return {
+		subscription: isSubscriptionString ? subscription : null,
+		type: isTypeString ? type : null,
+		interval: isIntervalString ? interval : null,
 	}
 }
 
